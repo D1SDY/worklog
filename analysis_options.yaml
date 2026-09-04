@@ -1,0 +1,40 @@
+# Static analysis configuration for the worklog Flutter app.
+#
+# The Definition of Done in CLAUDE.md requires ZERO diagnostics here — not
+# merely zero errors. `flutter analyze` reports lint violations as `info`, so a
+# "no errors" gate would pass while the codebase drifts. Zero-issues is the
+# only gate that bites.
+#
+# Run via the Dart MCP server's `analyze_files` (preferred) or `flutter analyze`.
+
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - web/**
+  errors:
+    # Fail loudly on the mistakes that produce broken builds or dead code.
+    missing_required_param: error
+    unused_import: error
+    unused_local_variable: error
+    dead_code: error
+
+linter:
+  rules:
+    # --- Ordering: the enforceable half of the member-order convention. ---
+    # Full member order (ctors -> fields -> lifecycle -> build -> methods) is only
+    # partly lintable; the rest is documented in CLAUDE.md and enforced in review.
+    directives_ordering: true
+    sort_constructors_first: true
+    sort_unnamed_constructors_first: true
+
+    # --- Consistency ---
+    prefer_single_quotes: true
+    require_trailing_commas: true
+    always_declare_return_types: true
+    prefer_final_locals: true
+    avoid_redundant_argument_values: true
+
+    # --- Correctness ---
+    unawaited_futures: true
