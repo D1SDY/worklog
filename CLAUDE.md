@@ -87,9 +87,7 @@ Skills bundled by pub dependencies are installed with `dart run skills@ get --ag
 No story is done until **all four gates pass**. Run them in this order; a
 failure at any gate means the story is still in progress.
 
-0. **UI rules met** — a baseline acceptance criterion on **every** story that
-   renders anything, whether or not the story restates it. See
-   `.claude/rules/ui.md`.
+0. **UI rules met** — see `.claude/rules/ui.md`.
 1. **Analyzer clean** — `analyze_files` (Dart MCP) returns **zero diagnostics**.
    Not "zero errors": lint violations surface as `info`, and they count.
 2. **Tests green** — `flutter test` passes with no failures and no skips.
