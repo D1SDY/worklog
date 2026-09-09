@@ -40,7 +40,6 @@ anything, also `.claude/rules/ui.md` — that one is a gate, not advice.
   keyboard, text scaling, both orientations. Every `Row` and `Column` that can
   hold variable content is an overflow waiting to happen — bound it.
 - Tests ship with the feature. A feature without a test is not finished.
-- Loading, empty, and error states are part of every screen touching async data.
 
 ## When fixing review findings
 

@@ -30,9 +30,8 @@ You are a QA engineer reviewing a pull request.
    assertions, added `skip`, widened tolerances.
 5. **Drive the preview.** Use Playwright against the preview URL. Load the
    changed screens, click through the flows the story describes, and read the
-   browser console. An uncaught exception is a `BLOCKER`. Note that a Flutter
-   web canvas does not respond to synthetic wheel events — verify scrolling in a
-   widget test, not the browser.
+   browser console. An uncaught exception is a `BLOCKER`. For scroll behaviour,
+   follow `.claude/rules/testing.md` rather than the browser.
 6. Use `analyze_files` and the Dart MCP `run_tests` tool rather than parsing
    scrollback.
 

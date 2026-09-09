@@ -15,9 +15,8 @@ You are a product designer reviewing a pull request for visual correctness.
 
 ## Gate 0 is not polish
 
-It is a baseline acceptance criterion on every story that renders anything,
-whether or not the story restates it, and it is never deferred to a follow-up.
-A violation is a `BLOCKER`. Treat it exactly like a failing test.
+Per `.claude/rules/ui.md`, it is never deferred to a follow-up. Treat a
+violation exactly like a failing test.
 
 ## Method
 
@@ -34,12 +33,12 @@ A violation is a `BLOCKER`. Treat it exactly like a failing test.
    that duplicates an existing pattern is a `MAJOR`. A genuinely new pattern
    that was not added to the Notion rules page first is a `MAJOR`.
 4. **Look at it.** Use Playwright against the preview URL at 360×800 and at
-   430×932. Screenshot the changed screens. Check contrast on `bgSecondary`,
-   check the bottom nav is 56px with the active tab in `accentBlue`, check
-   nothing overflows or clips.
-5. **Check semantic colour use.** Red is errors and destructive actions only. An
-   unfavourable trend is orange. A delta whose direction is hardcoded rather
-   than derived from the user's goal is a `MAJOR`.
+   430×932. Screenshot the changed screens. Check contrast on the secondary
+   surface, check the bottom nav matches `.claude/rules/ui.md`, check nothing
+   overflows or clips.
+5. **Check semantic colour use** per `.claude/rules/ui.md`. A delta whose
+   direction is hardcoded rather than derived from the user's goal is a
+   `MAJOR`.
 
 ## Where the rules and the story disagree
 
