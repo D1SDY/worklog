@@ -28,7 +28,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "chore: drop preview for PR #$PR"
+          git commit -m "chore: drop preview for PR #$PR" || echo "nothing to commit"
 
           # develop and other pr-cleanup runs can push to gh-pages around the
           # same time as PR previews; each writes to its own directory, so a
