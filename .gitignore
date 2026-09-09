@@ -49,3 +49,6 @@ app.*.map.json
 
 # Personal Claude Code settings for this project.
 .claude/settings.local.json
+
+# Reviewer verdicts travel as CI artifacts, never as commits.
+.review/
