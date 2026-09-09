@@ -90,7 +90,32 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "deploy: preview for PR #$PR" || echo "nothing to commit"
-          git push
+
+          # Multiple PRs can publish to gh-pages concurrently; each writes only
+          # to its own pr-<N>/ directory, so a rebase on top of a concurrent
+          # push is conflict-free by construction. Retry with fetch+rebase
+          # instead of relying on concurrency grouping (which is per-PR here).
+          pushed=false
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              pushed=true
+              break
+            fi
+            echo "Push rejected (attempt $attempt/5) — fetching and rebasing onto origin/gh-pages"
+            git fetch origin gh-pages
+            if ! git rebase origin/gh-pages; then
+              git rebase --abort
+              echo "::error::rebase onto origin/gh-pages conflicted; aborting rather than resolving blindly" >&2
+              exit 1
+            fi
+            sleep $((attempt * 3))
+          done
+
+          if [ "$pushed" != "true" ]; then
+            echo "::error::gh-pages push could not be fast-forwarded after 5 attempts" >&2
+            exit 1
+          fi
+
           echo "url=https://d1sdy.github.io/worklog/pr-$PR/" >> "$GITHUB_OUTPUT"
       - name: Comment the preview URL
         env:
