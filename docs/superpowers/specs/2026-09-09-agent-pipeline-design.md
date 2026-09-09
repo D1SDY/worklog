@@ -29,6 +29,7 @@ change with four specialised agents and no hand-run steps in between:
 | D6 | The repository becomes public | GitHub Pages previews on a private repo need a paid plan. Consequence: CI logs and every agent review comment are world-readable. |
 | D7 | Auth is `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token` | Covered by the existing Claude subscription; no API billing. Cost is subscription rate limits shared with local Claude Code use. |
 | D8 | The whole PR loop lives in **one** workflow file | Cross-workflow triggering (`workflow_run`, label events) either does not fire for `GITHUB_TOKEN` actions or hands secrets to fork PRs. A single `needs:` chain avoids both. |
+| D9 | BA and Designer hard-block when Notion is unreachable, after 3 backed-off retries; they never review on partial context | A review missing the acceptance criteria or the UI rules returns green for the wrong reason. Silent degradation is the one failure mode that would make the whole gate untrustworthy. |
 
 ## 3. Repository preparation
 
@@ -40,7 +41,8 @@ Ordered, and all of it precedes the first pipeline run:
 4. Create an orphan `gh-pages` branch with a `.nojekyll` file at its root
    (Flutter web ships `_`-prefixed paths that Jekyll would drop).
 5. Enable Pages with source = `gh-pages` branch, root folder.
-6. `gh secret set CLAUDE_CODE_OAUTH_TOKEN` (and `NOTION_TOKEN`, if used).
+6. `gh secret set CLAUDE_CODE_OAUTH_TOKEN` and `gh secret set NOTION_TOKEN`.
+   Both are required — see §4.1.
 7. Branch protection on `develop`: require the `gate` check, require 1
    approving review, no direct pushes.
 
@@ -72,13 +74,36 @@ Playwright is its CI replacement for the two agents that need to see the UI.
 Every agent job sets `--max-turns` and omits `github_token:` so the action
 authenticates as the Claude GitHub App.
 
-### 4.1 Degrading without Notion
+### 4.1 Notion is a hard dependency for BA and Designer
 
-`NOTION_TOKEN` is optional. The canonical design tokens — dark-first palette,
-4px spacing scale, radius scale, the two fonts by role, the Ukrainian nav
-labels — are mirrored into `.claude/rules/ui.md`, so `ui-designer` enforces
-Gate 0 offline. Notion adds the screen-specific notes and the story's own
-acceptance criteria; without it, BA falls back to the PR body's AC checklist.
+There is **no degraded mode**. A BA review that cannot read the acceptance
+criteria, or a designer review that cannot read 📐 UI Component Rules, is not a
+weaker review — it is a review that returns green for the wrong reason. Silent
+degradation is the one failure mode this pipeline must not have.
+
+So `NOTION_TOKEN` is **required**, and both jobs treat Notion reachability as a
+precondition:
+
+1. Before the agent starts, a step probes the Notion MCP server and fetches the
+   story page (BA) or the UI Component Rules page (Designer).
+2. On failure it retries — 3 attempts, exponential backoff (5s, 20s, 60s).
+   The bound is deliberate: an unbounded retry hangs the job until the runner
+   times out, spends Actions minutes, and consumes subscription rate limits
+   with no diagnostic.
+3. If all three attempts fail, the job writes
+   `{"verdict": "BLOCK", "findings": [{"severity": "BLOCKER", ...}]}` naming the
+   unreachable page and the underlying error, and exits. The agent is never run
+   against partial context.
+
+`gate` treats that exactly like any other `BLOCK`. Because the cause is
+infrastructure rather than code, `autofix` skips it (§8.5) — a dev agent cannot
+fix an expired Notion token — and the PR is labelled `review-blocked` for the
+human.
+
+The design tokens are still mirrored into `.claude/rules/ui.md` as the single
+in-repo copy that agents and humans read. That mirror is a convenience and a
+single source of truth for token values; it is not a substitute for the Notion
+pages and does not license a review to proceed without them.
 
 ## 5. Rules layer
 
@@ -180,6 +205,7 @@ Each reviewer writes `.review/{role}.json`:
   "findings": [
     {
       "severity": "BLOCKER",
+      "category": "code",
       "file": "lib/ui/training/widgets/training_screen.dart",
       "line": 42,
       "summary": "...",
@@ -189,13 +215,16 @@ Each reviewer writes `.review/{role}.json`:
 }
 ```
 
-uploaded as an artifact. `gate` downloads all three and aggregates. The
+`category` is `code` for anything the dev agent could fix, or `infrastructure`
+for a broken precondition (§8.5). It is uploaded as an artifact. `gate`
+downloads all three and aggregates. The
 human-readable review is posted separately as a PR comment. The artifact is the
 source of truth for the gate — comment text is never parsed.
 
 ### 8.3 Labels
 
-`iteration-1..3`, `needs-fix`, `ready-for-approval`, `review-cap-reached`.
+`iteration-1..3`, `needs-fix`, `ready-for-approval`, `review-cap-reached`,
+`review-blocked`.
 
 `verify` clears `needs-fix` and `ready-for-approval` at the start of every run,
 so a stale verdict from the previous iteration can never be read as the current
@@ -212,6 +241,19 @@ the iteration counter.
 - Any `BLOCK`, iteration = 3 → label `review-cap-reached`, stop, and comment
   with the outstanding findings for the human to arbitrate.
 
+### 8.5 Infrastructure blocks
+
+A finding whose `severity` is `BLOCKER` and whose `category` is `infrastructure`
+— an unreachable MCP server, an expired token, a preview URL that will not load
+— blocks the gate like any other blocker, but **`autofix` does not run**. The
+dev agent cannot fix a credential or a hosting outage, and letting it try burns
+an iteration and produces a speculative code change against a problem that is
+not in the code. The PR is labelled `review-blocked` instead, the iteration
+counter is not advanced, and the human is asked to fix the environment and
+re-run.
+
+This is the only case where a `BLOCK` does not consume an iteration.
+
 ## 9. Coverage policy
 
 `flutter test --coverage` produces `coverage/lcov.info`. A script computes the
@@ -226,7 +268,7 @@ is computed.
 | Secret | Required | Used by |
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | Yes | Every agent job |
-| `NOTION_TOKEN` | No | BA and Designer, for story text and screen notes |
+| `NOTION_TOKEN` | Yes | BA and Designer. Without it both reviews hard-block (§4.1) |
 
 - Secrets are stored in repository settings, never committed. Workflow files
   contain only `${{ secrets.NAME }}` references.
@@ -255,9 +297,13 @@ is computed.
 Each of these is a decision with a stated fallback, checked before the workflow
 is declared working:
 
-1. The Notion MCP server package name and its env-var contract. Fallback: BA
-   and Designer run without Notion, against `.claude/rules/ui.md` and the PR
-   body's AC checklist (§4.1).
+1. The Notion MCP server package name and its env-var contract. **No fallback**
+   — this is a hard dependency (§4.1), so it is resolved during implementation
+   rather than designed around: the reachability probe is built and proven
+   against the real Sprint Backlog page before either reviewer job is
+   considered done. If the token-based MCP server turns out not to serve these
+   pages, the resolution is a different Notion access method, not a degraded
+   review.
 2. `dart mcp-server` starts on a runner after `flutter pub get`. Fallback: the
    dev and QA agents shell out to `flutter analyze` and `flutter test`.
 3. The retro agent can open a PR using the Claude GitHub App credentials.
