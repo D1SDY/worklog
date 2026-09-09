@@ -56,7 +56,31 @@ String blockedVerdictJson({
   return const JsonEncoder.withIndent('  ').convert(verdict);
 }
 
-Future<bool> _fetchPage(String pageId, String token) async {
+/// Explains why the probe failed, from what was actually observed.
+///
+/// Exactly one of [statusCode] or [thrown] is expected to be set by a caller
+/// that got as far as making a request; [tokenEmpty] takes precedence since
+/// no request was even attempted in that case. When none of the three is
+/// set, the message stays neutral rather than repeating a stale guess.
+String probeFailureReason({
+  required bool tokenEmpty,
+  required String pageId,
+  int? statusCode,
+  Object? thrown,
+}) {
+  if (tokenEmpty) {
+    return 'NOTION_TOKEN is empty';
+  }
+  if (statusCode != null) {
+    return 'Notion API returned HTTP $statusCode for page $pageId';
+  }
+  if (thrown != null) {
+    return thrown.toString();
+  }
+  return 'Notion request did not succeed';
+}
+
+Future<int> _fetchStatusCode(String pageId, String token) async {
   final HttpClient client = HttpClient();
   try {
     final HttpClientRequest request = await client.getUrl(
@@ -67,7 +91,7 @@ Future<bool> _fetchPage(String pageId, String token) async {
       ..set('Notion-Version', '2022-06-28');
     final HttpClientResponse response = await request.close();
     await response.drain<void>();
-    return response.statusCode == 200;
+    return response.statusCode;
   } finally {
     client.close(force: true);
   }
@@ -84,15 +108,31 @@ Future<void> main(List<String> args) async {
   final Directory reviewDir = Directory(args[2])..createSync(recursive: true);
   final String token = Platform.environment['NOTION_TOKEN'] ?? '';
 
-  String lastError = 'NOTION_TOKEN is empty';
+  String lastError = probeFailureReason(
+    tokenEmpty: token.isEmpty,
+    pageId: pageId,
+  );
   final bool ok = token.isEmpty
       ? false
       : await probeWithRetry(
           attempt: () async {
             try {
-              return await _fetchPage(pageId, token);
+              final int statusCode = await _fetchStatusCode(pageId, token);
+              if (statusCode == 200) {
+                return true;
+              }
+              lastError = probeFailureReason(
+                tokenEmpty: false,
+                pageId: pageId,
+                statusCode: statusCode,
+              );
+              return false;
             } on Object catch (error) {
-              lastError = error.toString();
+              lastError = probeFailureReason(
+                tokenEmpty: false,
+                pageId: pageId,
+                thrown: error,
+              );
               rethrow;
             }
           },

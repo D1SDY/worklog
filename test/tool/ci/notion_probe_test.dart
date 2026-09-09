@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -93,6 +94,61 @@ void main() {
       expect(finding['severity'], 'BLOCKER');
       expect(finding['category'], 'infrastructure');
       expect(finding['why'], contains('401 unauthorized'));
+    });
+  });
+
+  group('probeFailureReason', () {
+    test('reports a missing token', () {
+      final String reason = probeFailureReason(
+        tokenEmpty: true,
+        pageId: 'page-1',
+      );
+
+      expect(reason, contains('NOTION_TOKEN'));
+    });
+
+    test(
+      'reports the status code for a 401 without claiming an empty token',
+      () {
+        final String reason = probeFailureReason(
+          tokenEmpty: false,
+          pageId: 'page-1',
+          statusCode: 401,
+        );
+
+        expect(reason, contains('401'));
+        expect(reason, isNot(contains('empty')));
+      },
+    );
+
+    test('reports the status code and page id for a 404', () {
+      final String reason = probeFailureReason(
+        tokenEmpty: false,
+        pageId: 'page-1',
+        statusCode: 404,
+      );
+
+      expect(reason, contains('404'));
+      expect(reason, contains('page-1'));
+    });
+
+    test('carries a thrown exception through', () {
+      final String reason = probeFailureReason(
+        tokenEmpty: false,
+        pageId: 'page-1',
+        thrown: const SocketException('Connection refused'),
+      );
+
+      expect(reason, contains('Connection refused'));
+    });
+
+    test('falls back to a neutral message when nothing was recorded', () {
+      final String reason = probeFailureReason(
+        tokenEmpty: false,
+        pageId: 'page-1',
+      );
+
+      expect(reason, 'Notion request did not succeed');
     });
   });
 }
