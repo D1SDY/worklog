@@ -123,3 +123,210 @@ jobs:
         run: |
           gh pr comment "${{ github.event.pull_request.number }}" \
             --body "Preview: ${{ steps.publish.outputs.url }}"
+
+  review-ba:
+    needs: preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - id: probe
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: dart tool/ci/notion_probe.dart ba "${{ vars.NOTION_SPRINT_DB_ID }}" .review
+      - if: steps.probe.outputs.ok == 'true'
+        uses: anthropics/claude-code-action@v1
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: >-
+            Review pull request ${{ github.repository }}#${{ github.event.pull_request.number }}
+            using the business-analyst agent defined in .claude/agents/business-analyst.md.
+            Follow .claude/rules/review-protocol.md exactly.
+            Write your verdict to .review/ba.json and post the human-readable
+            review as a PR comment.
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 30
+            --mcp-config .github/mcp/ba.json
+            --allowedTools "Read,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Write,mcp__notion"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-ba
+          path: .review/ba.json
+          if-no-files-found: warn
+
+  review-qa:
+    needs: preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: >-
+            Review pull request ${{ github.repository }}#${{ github.event.pull_request.number }}
+            using the qa-engineer agent defined in .claude/agents/qa-engineer.md.
+            The deployed preview is at ${{ needs.preview.outputs.url }} — drive it
+            with Playwright and read the browser console.
+            Follow .claude/rules/review-protocol.md exactly.
+            Write your verdict to .review/qa.json and post the human-readable
+            review as a PR comment.
+          claude_args: |
+            --model claude-opus-5
+            --max-turns 40
+            --mcp-config .github/mcp/qa.json
+            --allowedTools "Read,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(flutter test:*),Write,mcp__dart,mcp__playwright"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-qa
+          path: .review/qa.json
+          if-no-files-found: warn
+
+  review-design:
+    needs: preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - id: probe
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: dart tool/ci/notion_probe.dart design "${{ vars.NOTION_UI_RULES_PAGE_ID }}" .review
+      - if: steps.probe.outputs.ok == 'true'
+        uses: anthropics/claude-code-action@v1
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: >-
+            Review pull request ${{ github.repository }}#${{ github.event.pull_request.number }}
+            using the ui-designer agent defined in .claude/agents/ui-designer.md.
+            The deployed preview is at ${{ needs.preview.outputs.url }} — look at it
+            with Playwright at 360x800 and 430x932.
+            Follow .claude/rules/review-protocol.md exactly.
+            Write your verdict to .review/design.json and post the human-readable
+            review as a PR comment.
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 35
+            --mcp-config .github/mcp/design.json
+            --allowedTools "Read,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Write,mcp__notion,mcp__playwright"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-design
+          path: .review/design.json
+          if-no-files-found: warn
+
+  gate:
+    needs: [preview, review-ba, review-qa, review-design]
+    if: always() && needs.preview.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      run_autofix: ${{ steps.decide.outputs.run_autofix }}
+      approved: ${{ steps.decide.outputs.approved }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: review-*
+          merge-multiple: true
+          path: .review
+      - id: labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          current=$(gh pr view "${{ github.event.pull_request.number }}" \
+            --json labels --jq '[.labels[].name] | join(",")')
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+      - id: decide
+        run: dart tool/ci/review_gate.dart .review "${{ steps.labels.outputs.current }}" >> "$GITHUB_OUTPUT"
+      - name: Apply labels and report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          ADD: ${{ steps.decide.outputs.labels_to_add }}
+          REMOVE: ${{ steps.decide.outputs.labels_to_remove }}
+          SUMMARY: ${{ steps.decide.outputs.summary }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra removals <<< "$REMOVE"
+          for label in "${removals[@]}"; do
+            [ -n "$label" ] && gh pr edit "$PR" --remove-label "$label" || true
+          done
+          IFS=',' read -ra additions <<< "$ADD"
+          for label in "${additions[@]}"; do
+            [ -n "$label" ] && gh pr edit "$PR" --add-label "$label" || true
+          done
+          printf '### Review gate\n\n%s\n' "$SUMMARY" | gh pr comment "$PR" --body-file -
+      - name: Fail the check when the gate does not approve
+        if: steps.decide.outputs.approved != 'true'
+        run: |
+          echo "Gate did not approve; see the review comments."
+          exit 1
+
+  autofix:
+    needs: gate
+    if: always() && needs.gate.outputs.run_autofix == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: review-*
+          merge-multiple: true
+          path: .review
+      - uses: anthropics/claude-code-action@v1
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: >-
+            Using the flutter-senior-dev agent defined in
+            .claude/agents/flutter-senior-dev.md, fix every BLOCKER and MAJOR
+            finding with category "code" in the .review/*.json files.
+            Do not weaken or delete tests, and do not lower the coverage floor.
+            If a finding is wrong, leave the code alone and explain why in the
+            commit body. Then run dart format, flutter analyze --fatal-infos and
+            flutter test, and commit and push to
+            ${{ github.event.pull_request.head.ref }}.
+          claude_args: |
+            --model claude-opus-5
+            --max-turns 60
+            --mcp-config .github/mcp/dev.json
+            --allowedTools "Read,Write,Edit,Grep,Glob,Bash,mcp__dart,mcp__notion"
