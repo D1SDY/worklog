@@ -37,6 +37,32 @@ double lineRate(String lcov) {
   return hit * 100 / found;
 }
 
+/// Whether [lcov] contains at least one non-excluded record with instrumented
+/// lines. A report with no coverage data means the coverage run itself was
+/// broken, not that coverage is merely below the floor.
+bool hasCoverageData(String lcov) {
+  bool excluded = false;
+
+  for (final String line in lcov.split('\n')) {
+    final String record = line.trim();
+    if (record.startsWith('SF:')) {
+      final String path = record.substring(3).replaceAll(r'\', '/');
+      excluded = excludedPatterns.any(path.endsWith);
+    } else if (record == 'end_of_record') {
+      excluded = false;
+    } else if (excluded) {
+      continue;
+    } else if (record.startsWith('LF:')) {
+      final int found = int.parse(record.substring(3));
+      if (found > 0) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 /// Whether [rate] satisfies [floor].
 bool meetsFloor(double rate, double floor) => rate >= floor;
 
@@ -61,7 +87,13 @@ Future<void> main(List<String> args) async {
     exit(1);
   }
 
-  final double rate = lineRate(lcovFile.readAsStringSync());
+  final String lcovContents = lcovFile.readAsStringSync();
+  if (!hasCoverageData(lcovContents)) {
+    stderr.writeln('${args[0]} contains no instrumented lines');
+    exit(1);
+  }
+
+  final double rate = lineRate(lcovContents);
   final double floor = parseFloor(File(args[1]).readAsStringSync());
 
   stdout.writeln(

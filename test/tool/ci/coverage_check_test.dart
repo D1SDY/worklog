@@ -69,6 +69,60 @@ end_of_record
     });
   });
 
+  group('hasCoverageData', () {
+    test('returns false for an empty report', () {
+      expect(hasCoverageData(''), isFalse);
+    });
+
+    test('returns false when the only record is excluded', () {
+      const String lcov = '''
+SF:lib/a.g.dart
+LF:100
+LH:0
+end_of_record
+''';
+
+      expect(hasCoverageData(lcov), isFalse);
+    });
+
+    test('returns true for a normal report with one real record', () {
+      const String lcov = '''
+SF:lib/a.dart
+LF:10
+LH:8
+end_of_record
+''';
+
+      expect(hasCoverageData(lcov), isTrue);
+    });
+
+    test('returns false when the only record has LF:0', () {
+      const String lcov = '''
+SF:lib/a.dart
+LF:0
+LH:0
+end_of_record
+''';
+
+      expect(hasCoverageData(lcov), isFalse);
+    });
+
+    test('returns true when a real record follows an excluded one', () {
+      const String lcov = '''
+SF:lib/a.g.dart
+LF:100
+LH:0
+end_of_record
+SF:lib/b.dart
+LF:2
+LH:2
+end_of_record
+''';
+
+      expect(hasCoverageData(lcov), isTrue);
+    });
+  });
+
   group('meetsFloor', () {
     test('passes when the rate equals the floor', () {
       expect(meetsFloor(95.0, 95.0), isTrue);
