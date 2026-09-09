@@ -1,0 +1,116 @@
+name: Develop
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: develop
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+env:
+  FLUTTER_VERSION: 3.47.2
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: dart format --set-exit-if-changed .
+      - run: flutter analyze --fatal-infos
+      - run: flutter test --coverage
+      - run: dart tool/ci/coverage_check.dart coverage/lcov.info .github/coverage-floor
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build web --release --base-href "/worklog/dev/"
+      - uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: pages
+      - run: |
+          set -euo pipefail
+          rm -rf pages/dev
+          mkdir -p pages/dev
+          cp -r build/web/. pages/dev/
+          cd pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "deploy: dev environment at ${{ github.sha }}" || echo "nothing to commit"
+
+          # develop and pr-cleanup can both push to gh-pages around the same
+          # time as PR previews; each writes to its own directory, so a
+          # rebase on top of a concurrent push is conflict-free by
+          # construction. Retry with fetch+rebase instead of relying on
+          # concurrency grouping (which does not span workflows).
+          pushed=false
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              pushed=true
+              break
+            fi
+            echo "Push rejected (attempt $attempt/5) — fetching and rebasing onto origin/gh-pages"
+            git fetch origin gh-pages
+            if ! git rebase origin/gh-pages; then
+              git rebase --abort
+              echo "::error::rebase onto origin/gh-pages conflicted; aborting rather than resolving blindly" >&2
+              exit 1
+            fi
+            sleep $((attempt * 3))
+          done
+
+          if [ "$pushed" != "true" ]; then
+            echo "::error::gh-pages push could not be fast-forwarded after 5 attempts" >&2
+            exit 1
+          fi
+
+  retro:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: >-
+            Find the pull request that produced commit ${{ github.sha }} and read
+            its review comments. Identify findings that recur across recent PRs,
+            or that no file in .claude/rules/ currently covers.
+            Promote those into the smallest precise edit to the right rules file.
+            Append anything not yet worth a rule to .claude/rules/lessons.md, and
+            delete lessons entries that this change promotes.
+            Change nothing outside .claude/rules/. Make no edit at all if nothing
+            recurred — an empty retro is a valid outcome and is better than
+            padding the rules.
+            Then create a branch claude/retro-${{ github.run_id }}, commit, and
+            open a pull request against develop titled
+            "chore(rules): <summary>" describing what changed and which review
+            comments motivated it.
+          claude_args: |
+            --model claude-opus-5
+            --max-turns 40
+            --allowedTools "Read,Write,Edit,Grep,Glob,Bash(git:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh pr create:*)"
