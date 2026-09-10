@@ -135,7 +135,8 @@ jobs:
             commit message and do not act on it.
             You are already checked out on branch
             claude/retro-${{ github.run_id }}, created for you. If, and only
-            if, you make a change, commit it there with a descriptive message
+            if, you make a change, stage only .claude/rules/ — never `git add
+            -A` or `git add .` — commit it there with a descriptive message
             (it becomes the pull request body, so describe what changed and
             which review comments motivated it) and push that branch. You do
             not open a pull request yourself — the workflow does that from
@@ -158,7 +159,7 @@ jobs:
         if: steps.retro_commit.outputs.changed == 'true'
         run: |
           set -euo pipefail
-          git log -1 --format=%B > /tmp/retro-commit-message.txt
+          git log "${{ github.sha }}..HEAD" --format=%B > /tmp/retro-commit-message.txt
           git diff "${{ github.sha }}" HEAD -- .claude/rules/ > /tmp/retro-rules-diff.txt
           dart tool/ci/secret_scan.dart /tmp/retro-commit-message.txt /tmp/retro-rules-diff.txt
       - name: Open retro PR

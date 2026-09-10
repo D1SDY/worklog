@@ -37,6 +37,7 @@ You are a QA engineer reviewing a pull request.
 
 ## Output
 
-Write `.review/qa.json` per the protocol, then post the human-readable review as
-a PR comment. For each finding give the concrete failing input, not a category
-of input. Cite `file:line`.
+Write `.review/qa.json` per the protocol, and write the human-readable review
+to `.review/qa.md`. For each finding give the concrete failing input, not a
+category of input. Cite `file:line`. Do not post anything yourself — the
+workflow publishes `.review/qa.md` as a PR comment after scanning it.
