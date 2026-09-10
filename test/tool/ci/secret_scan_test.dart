@@ -96,5 +96,77 @@ NOTION_TOKEN=something
 
       expect(scanForSecrets(content), hasLength(2));
     });
+
+    test('detects an uppercased anthropic api key', () {
+      final List<SecretHit> hits = scanForSecrets(
+        'SK-ANT-API03-AAAABBBBCCCCDDDDEEEEFFFF',
+      );
+
+      expect(hits, hasLength(1));
+      expect(hits.single.patternName, 'anthropic-api-key');
+    });
+
+    test('detects a mixed-case anthropic api key', () {
+      final List<SecretHit> hits = scanForSecrets(
+        'Sk-Ant-Api03-AAAABBBBCCCCDDDDEEEEFFFF',
+      );
+
+      expect(hits, hasLength(1));
+      expect(hits.single.patternName, 'anthropic-api-key');
+    });
+
+    test('detects an uppercased anthropic oauth token', () {
+      final List<SecretHit> hits = scanForSecrets(
+        'SK-ANT-OAT01-AAAABBBBCCCCDDDD',
+      );
+
+      expect(hits, hasLength(1));
+      expect(hits.single.patternName, 'anthropic-oauth-token');
+    });
+
+    test('detects an uppercased github token', () {
+      expect(
+        scanForSecrets('GHO_${'C' * 30}').single.patternName,
+        'github-token',
+      );
+    });
+
+    test('detects a mixed-case github token', () {
+      expect(
+        scanForSecrets('Gho_${'cC' * 15}').single.patternName,
+        'github-token',
+      );
+    });
+
+    test('detects a token split across a line break', () {
+      final List<SecretHit> hits = scanForSecrets(
+        'sk-ant-api03-AAAA\nBBBBCCCCDDDDEEEEFFFF',
+      );
+
+      expect(hits, hasLength(1));
+      expect(hits.single.patternName, 'anthropic-api-key');
+      expect(hits.single.line, 1);
+      expect(hits.single.excerpt, isNot(contains('AAAA')));
+      expect(hits.single.excerpt, isNot(contains('BBBB')));
+    });
+
+    test('detects a token split across a CRLF', () {
+      final List<SecretHit> hits = scanForSecrets(
+        'sk-ant-api03-AAAA\r\nBBBBCCCCDDDDEEEEFFFF',
+      );
+
+      expect(hits, hasLength(1));
+      expect(hits.single.patternName, 'anthropic-api-key');
+      expect(hits.single.line, 1);
+    });
+
+    test('does not join space-separated prose into a false positive', () {
+      expect(
+        scanForSecrets(
+          'use sk-ant- prefixed keys\nand then AAAABBBBCCCCDDDDEEEE',
+        ),
+        isEmpty,
+      );
+    });
   });
 }
