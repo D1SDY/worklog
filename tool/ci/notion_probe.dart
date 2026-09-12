@@ -56,15 +56,35 @@ String blockedVerdictJson({
   return const JsonEncoder.withIndent('  ').convert(verdict);
 }
 
+/// Builds the Notion REST endpoint for [kind] and [id].
+///
+/// Notion serves pages and databases from different endpoints; fetching one
+/// kind of resource from the other's endpoint returns a 404. [kind] must be
+/// `'page'` or `'database'`; any other value throws [ArgumentError] rather
+/// than silently guessing.
+String notionUrlFor({required String kind, required String id}) {
+  switch (kind) {
+    case 'page':
+      return 'https://api.notion.com/v1/pages/$id';
+    case 'database':
+      return 'https://api.notion.com/v1/databases/$id';
+    default:
+      throw ArgumentError.value(kind, 'kind', 'must be "page" or "database"');
+  }
+}
+
 /// Explains why the probe failed, from what was actually observed.
 ///
 /// Exactly one of [statusCode] or [thrown] is expected to be set by a caller
 /// that got as far as making a request; [tokenEmpty] takes precedence since
 /// no request was even attempted in that case. When none of the three is
 /// set, the message stays neutral rather than repeating a stale guess.
+/// [kind] and [id] name the resource so a database failure and a page
+/// failure never read as the same message.
 String probeFailureReason({
   required bool tokenEmpty,
-  required String pageId,
+  required String kind,
+  required String id,
   int? statusCode,
   Object? thrown,
 }) {
@@ -72,7 +92,7 @@ String probeFailureReason({
     return 'NOTION_TOKEN is empty';
   }
   if (statusCode != null) {
-    return 'Notion API returned HTTP $statusCode for page $pageId';
+    return 'Notion API returned HTTP $statusCode for $kind $id';
   }
   if (thrown != null) {
     return thrown.toString();
@@ -80,12 +100,10 @@ String probeFailureReason({
   return 'Notion request did not succeed';
 }
 
-Future<int> _fetchStatusCode(String pageId, String token) async {
+Future<int> _fetchStatusCode(String url, String token) async {
   final HttpClient client = HttpClient();
   try {
-    final HttpClientRequest request = await client.getUrl(
-      Uri.parse('https://api.notion.com/v1/pages/$pageId'),
-    );
+    final HttpClientRequest request = await client.getUrl(Uri.parse(url));
     request.headers
       ..set('Authorization', 'Bearer $token')
       ..set('Notion-Version', '2022-06-28');
@@ -97,40 +115,57 @@ Future<int> _fetchStatusCode(String pageId, String token) async {
   }
 }
 
+/// The resource kinds `notion_probe.dart` accepts on its command line.
+const List<String> _validKinds = <String>['page', 'database'];
+
 Future<void> main(List<String> args) async {
-  if (args.length != 3) {
-    stderr.writeln('usage: notion_probe.dart <role> <page-id> <review-dir>');
+  if (args.length != 4) {
+    stderr.writeln('usage: notion_probe.dart <role> <kind> <id> <review-dir>');
     exit(2);
   }
 
   final String role = args[0];
-  final String pageId = args[1];
-  final Directory reviewDir = Directory(args[2])..createSync(recursive: true);
+  final String kind = args[1];
+  final String id = args[2];
+
+  if (!_validKinds.contains(kind)) {
+    stderr.writeln(
+      'usage: notion_probe.dart <role> <kind> <id> <review-dir>: '
+      'kind must be "page" or "database", got "$kind"',
+    );
+    exit(2);
+  }
+
+  final Directory reviewDir = Directory(args[3])..createSync(recursive: true);
   final String token = Platform.environment['NOTION_TOKEN'] ?? '';
+  final String url = notionUrlFor(kind: kind, id: id);
 
   String lastError = probeFailureReason(
     tokenEmpty: token.isEmpty,
-    pageId: pageId,
+    kind: kind,
+    id: id,
   );
   final bool ok = token.isEmpty
       ? false
       : await probeWithRetry(
           attempt: () async {
             try {
-              final int statusCode = await _fetchStatusCode(pageId, token);
+              final int statusCode = await _fetchStatusCode(url, token);
               if (statusCode == 200) {
                 return true;
               }
               lastError = probeFailureReason(
                 tokenEmpty: false,
-                pageId: pageId,
+                kind: kind,
+                id: id,
                 statusCode: statusCode,
               );
               return false;
             } on Object catch (error) {
               lastError = probeFailureReason(
                 tokenEmpty: false,
-                pageId: pageId,
+                kind: kind,
+                id: id,
                 thrown: error,
               );
               rethrow;
@@ -141,7 +176,7 @@ Future<void> main(List<String> args) async {
 
   if (!ok) {
     File('${reviewDir.path}/$role.json').writeAsStringSync(
-      blockedVerdictJson(role: role, target: 'page $pageId', error: lastError),
+      blockedVerdictJson(role: role, target: '$kind $id', error: lastError),
     );
     stderr.writeln('Notion unreachable after 4 attempts: $lastError');
   }

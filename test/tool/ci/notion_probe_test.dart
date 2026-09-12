@@ -76,6 +76,29 @@ void main() {
     });
   });
 
+  group('notionUrlFor', () {
+    test('builds the pages endpoint for a page', () {
+      expect(
+        notionUrlFor(kind: 'page', id: 'abc123'),
+        'https://api.notion.com/v1/pages/abc123',
+      );
+    });
+
+    test('builds the databases endpoint for a database', () {
+      expect(
+        notionUrlFor(kind: 'database', id: 'abc123'),
+        'https://api.notion.com/v1/databases/abc123',
+      );
+    });
+
+    test('throws ArgumentError for an unrecognised kind', () {
+      expect(
+        () => notionUrlFor(kind: 'block', id: 'abc123'),
+        throwsArgumentError,
+      );
+    });
+  });
+
   group('blockedVerdictJson', () {
     test('produces a parseable infrastructure blocker', () {
       final String json = blockedVerdictJson(
@@ -101,7 +124,8 @@ void main() {
     test('reports a missing token', () {
       final String reason = probeFailureReason(
         tokenEmpty: true,
-        pageId: 'page-1',
+        kind: 'page',
+        id: 'page-1',
       );
 
       expect(reason, contains('NOTION_TOKEN'));
@@ -112,7 +136,8 @@ void main() {
       () {
         final String reason = probeFailureReason(
           tokenEmpty: false,
-          pageId: 'page-1',
+          kind: 'page',
+          id: 'page-1',
           statusCode: 401,
         );
 
@@ -124,7 +149,8 @@ void main() {
     test('reports the status code and page id for a 404', () {
       final String reason = probeFailureReason(
         tokenEmpty: false,
-        pageId: 'page-1',
+        kind: 'page',
+        id: 'page-1',
         statusCode: 404,
       );
 
@@ -135,7 +161,8 @@ void main() {
     test('carries a thrown exception through', () {
       final String reason = probeFailureReason(
         tokenEmpty: false,
-        pageId: 'page-1',
+        kind: 'page',
+        id: 'page-1',
         thrown: const SocketException('Connection refused'),
       );
 
@@ -145,10 +172,30 @@ void main() {
     test('falls back to a neutral message when nothing was recorded', () {
       final String reason = probeFailureReason(
         tokenEmpty: false,
-        pageId: 'page-1',
+        kind: 'page',
+        id: 'page-1',
       );
 
       expect(reason, 'Notion request did not succeed');
+    });
+
+    test('names which resource failed so a database and a page 404 differ', () {
+      final String databaseReason = probeFailureReason(
+        tokenEmpty: false,
+        kind: 'database',
+        id: 'same-id',
+        statusCode: 404,
+      );
+      final String pageReason = probeFailureReason(
+        tokenEmpty: false,
+        kind: 'page',
+        id: 'same-id',
+        statusCode: 404,
+      );
+
+      expect(databaseReason, isNot(equals(pageReason)));
+      expect(databaseReason, contains('database'));
+      expect(pageReason, contains('page'));
     });
   });
 }

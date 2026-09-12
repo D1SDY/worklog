@@ -138,7 +138,7 @@ jobs:
       - id: probe
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-        run: dart tool/ci/notion_probe.dart ba "${{ vars.NOTION_SPRINT_DB_ID }}" .review
+        run: dart tool/ci/notion_probe.dart ba database "${{ vars.NOTION_SPRINT_DB_ID }}" .review
       - if: steps.probe.outputs.ok == 'true'
         uses: anthropics/claude-code-action@v1
         env:
@@ -255,7 +255,7 @@ jobs:
       - id: probe
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-        run: dart tool/ci/notion_probe.dart design "${{ vars.NOTION_UI_RULES_PAGE_ID }}" .review
+        run: dart tool/ci/notion_probe.dart design page "${{ vars.NOTION_UI_RULES_PAGE_ID }}" .review
       - if: steps.probe.outputs.ok == 'true'
         uses: anthropics/claude-code-action@v1
         env:
