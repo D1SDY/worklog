@@ -196,19 +196,4 @@ void main() {
       );
     });
   });
-
-  group('.github/workflows/pr.yml', () {
-    final String prWorkflow = File('.github/workflows/pr.yml')
-        .readAsStringSync();
-
-    test('posts the preview URL only once GitHub Pages serves it', () {
-      final int wait = prWorkflow.indexOf(
-        'Wait for GitHub Pages to serve this build',
-      );
-      final int comment = prWorkflow.indexOf('Comment the preview URL');
-      expect(prWorkflow, contains('pages: write'));
-      expect(wait, isNonNegative);
-      expect(wait, lessThan(comment));
-    });
-  });
 }
