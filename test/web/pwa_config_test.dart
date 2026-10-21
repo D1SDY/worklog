@@ -129,6 +129,18 @@ void main() {
     test('stops at the deployment root instead of redirecting in a loop', () {
       expect(notFoundHtml, contains("if (route === '/') {"));
     });
+
+    test('uses the --bg-primary and text-primary tokens', () {
+      expect(
+        notFoundHtml,
+        contains('name="theme-color" content="${_hex(AppColors.bgPrimary)}"'),
+      );
+      expect(
+        notFoundHtml,
+        contains('background: ${_hex(AppColors.bgPrimary)};'),
+      );
+      expect(notFoundHtml, contains('color: ${_hex(AppColors.textPrimary)};'));
+    });
   });
 
   group('web/flutter_bootstrap.js', () {
@@ -173,6 +185,30 @@ void main() {
     test('keeps the pull request previews when replacing the root', () {
       expect(developWorkflow, contains("! -name 'pr-*'"));
       expect(developWorkflow, contains('! -name .nojekyll'));
+    });
+
+    test('does not finish until GitHub Pages serves the new build', () {
+      expect(developWorkflow, contains('pages: write'));
+      expect(developWorkflow, contains('pages/builds'));
+      expect(
+        developWorkflow,
+        contains("grep -o 'buildVersion = \"[0-9]*\"' build/web/index.html"),
+      );
+    });
+  });
+
+  group('.github/workflows/pr.yml', () {
+    final String prWorkflow = File('.github/workflows/pr.yml')
+        .readAsStringSync();
+
+    test('posts the preview URL only once GitHub Pages serves it', () {
+      final int wait = prWorkflow.indexOf(
+        'Wait for GitHub Pages to serve this build',
+      );
+      final int comment = prWorkflow.indexOf('Comment the preview URL');
+      expect(prWorkflow, contains('pages: write'));
+      expect(wait, isNonNegative);
+      expect(wait, lessThan(comment));
     });
   });
 }

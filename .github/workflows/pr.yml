@@ -15,6 +15,7 @@ permissions:
   issues: write
   id-token: write
   actions: read
+  pages: write
 
 env:
   # gh needs the repo explicitly: some steps run outside a checkout
@@ -119,6 +120,28 @@ jobs:
           fi
 
           echo "url=https://d1sdy.github.io/worklog/pr-$PR/" >> "$GITHUB_OUTPUT"
+      - name: Wait for GitHub Pages to serve this build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          URL: ${{ steps.publish.outputs.url }}
+        run: |
+          set -euo pipefail
+          # GitHub does not always start a Pages build for a push made with
+          # GITHUB_TOKEN, which leaves the site serving the previous build or
+          # a 404. Request one explicitly, then wait until the URL serves the
+          # build just pushed; the query string bypasses the CDN cache.
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" --silent
+          expected=$(grep -o 'buildVersion = "[0-9]*"' web-build/index.html)
+          for attempt in $(seq 1 30); do
+            served=$(curl -fsS "$URL?ci=${{ github.run_id }}-$attempt" 2>/dev/null || true)
+            if grep -qF "$expected" <<< "$served"; then
+              echo "GitHub Pages serves this build at $URL"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$URL did not serve this build within 5 minutes" >&2
+          exit 1
       - name: Comment the preview URL
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
