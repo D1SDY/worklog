@@ -17,6 +17,8 @@ permissions:
   actions: read
 
 env:
+  # gh needs the repo explicitly: some steps run outside a checkout
+  GH_REPO: ${{ github.repository }}
   FLUTTER_VERSION: 3.47.2
 
 jobs:
