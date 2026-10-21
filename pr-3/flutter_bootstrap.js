@@ -66,7 +66,7 @@ function worklogBuildToReloadFor(runningVersion, deployedIndexHtml, lastAttempt,
 
 if (typeof window !== 'undefined') {
   (function () {
-    const buildVersion = "850602144" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */;
+    const buildVersion = "2170145616" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */;
     const reloadKey = 'worklog.reloadAttempt';
     let checkInFlight = false;
     window.worklogBuildVersion = buildVersion;
