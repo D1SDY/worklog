@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0F1419">
+  <title>Workout Logger</title>
+  <!--
+    GitHub Pages answers every unknown path with this page. Flutter routes
+    (/worklog/training, /worklog/pr-12/statistics) are
+    not files, so a refresh or an opened deep link lands here. Hand the route
+    to the right deployment's index.html as ?p=…; index.html restores it
+    before Flutter starts.
+  -->
+  <script>
+    (function () {
+      var segments = window.location.pathname.split('/');
+      var depth = /^pr-\d+$/.test(segments[2] || '') ? 3 : 2;
+      var base = segments.slice(0, depth).join('/') + '/';
+      var route = '/' + segments.slice(depth).join('/');
+      if (route === '/') {
+        return;
+      }
+      window.location.replace(
+        base + '?p=' + encodeURIComponent(route + window.location.search) +
+          window.location.hash
+      );
+    })();
+  </script>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #0F1419;
+      color: #F5F7FA;
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <p>Сторінку не знайдено</p>
+</body>
+</html>
