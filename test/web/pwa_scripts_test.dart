@@ -26,7 +26,12 @@ String _bootstrapSource({String version = '123'}) {
 }
 
 dynamic _node(String program) {
-  final ProcessResult result = Process.runSync('node', <String>['-e', program]);
+  final ProcessResult result;
+  try {
+    result = Process.runSync('node', <String>['-e', program]);
+  } on ProcessException catch (error) {
+    fail('test/web needs node on PATH to run the PWA scripts: $error');
+  }
   if (result.exitCode != 0) {
     fail('node exited with ${result.exitCode}:\n${result.stderr}');
   }
@@ -38,13 +43,14 @@ dynamic _call(String scripts, String expression) {
 }
 
 Map<String, dynamic> _launch({
-  required String deployedVersion,
+  String deployedVersion = '123',
   String lastAttempt = 'null',
   int visibilityEvents = 0,
+  String responses = '',
 }) {
   final String program =
       '''
-const state = { fetches: 0, reloads: 0, loadOptions: null, listeners: [], storage: {} };
+const state = { fetches: 0, reloads: 0, loadOptions: null, listeners: [], storage: {}, warnings: [] };
 const lastAttempt = $lastAttempt;
 if (lastAttempt !== null) {
   state.storage['worklog.reloadAttempt'] = JSON.stringify(lastAttempt);
@@ -60,10 +66,18 @@ globalThis.sessionStorage = {
   getItem(key) { return key in state.storage ? state.storage[key] : null; },
   setItem(key, value) { state.storage[key] = value; },
 };
+const responses = [$responses];
+globalThis.console.warn = (...args) => { state.warnings.push(args.join(' ')); };
 globalThis.fetch = async () => {
   state.fetches++;
   await new Promise((resolve) => setTimeout(resolve, 20));
-  return { text: async () => 'const buildVersion = "$deployedVersion" /* x */;' };
+  const next = responses.length > 0
+    ? responses.shift()
+    : { status: 200, body: 'const buildVersion = "$deployedVersion" /* x */;' };
+  if (next.reject) {
+    throw new Error('offline');
+  }
+  return { ok: next.status >= 200 && next.status < 300, status: next.status, text: async () => next.body };
 };
 globalThis._flutter = {
   buildConfig: { builds: [{ compileTarget: 'dart2js', mainJsPath: 'main.dart.js' }, {}] },
@@ -73,6 +87,11 @@ ${_bootstrapSource()}
 for (let i = 0; i < $visibilityEvents; i++) {
   state.listeners.forEach((listener) => listener());
 }
+setTimeout(() => {
+  if (responses.length > 0) {
+    state.listeners.forEach((listener) => listener());
+  }
+}, 80);
 setTimeout(async () => {
   let engineConfig = null;
   await state.loadOptions.onEntrypointLoaded({
@@ -88,6 +107,7 @@ setTimeout(async () => {
     loadOptionKeys: Object.keys(state.loadOptions),
     hostElementId: engineConfig.hostElement.id,
     attempt: JSON.parse(state.storage['worklog.reloadAttempt'] || 'null'),
+    warnings: state.warnings,
   }));
 }, 200);
 ''';
@@ -212,20 +232,17 @@ process.stdout.write(JSON.stringify(
 
   group('web/flutter_bootstrap.js', () {
     test('starts Flutter in #app without a service worker', () {
-      final Map<String, dynamic> run = _launch(deployedVersion: '123');
+      final Map<String, dynamic> run = _launch();
       expect(run['loadOptionKeys'], <String>['onEntrypointLoaded']);
       expect(run['hostElementId'], 'app');
     });
 
     test('cache-busts main.dart.js with the build version', () {
-      expect(
-        _launch(deployedVersion: '123')['mainJsPath'],
-        'main.dart.js?v=123',
-      );
+      expect(_launch()['mainJsPath'], 'main.dart.js?v=123');
     });
 
     test('does not reload when the deployed build is the running one', () {
-      final Map<String, dynamic> run = _launch(deployedVersion: '123');
+      final Map<String, dynamic> run = _launch();
       expect(run['fetches'], 1);
       expect(run['reloads'], 0);
     });
@@ -267,6 +284,31 @@ process.stdout.write(JSON.stringify(
       );
       expect(run['fetches'], 1);
       expect(run['reloads'], 1);
+    });
+
+    test('warns instead of reloading when the deployment is gone', () {
+      final Map<String, dynamic> run = _launch(
+        responses: "{ status: 404, body: '<title>Page not found · GitHub Pages</title>' }",
+      );
+      expect(run['reloads'], 0);
+      expect(run['warnings'], <dynamic>[contains('answered 404')]);
+    });
+
+    test('warns when the served page carries no build version', () {
+      final Map<String, dynamic> run = _launch(
+        responses: "{ status: 200, body: '<html>maintenance</html>' }",
+      );
+      expect(run['reloads'], 0);
+      expect(run['warnings'], <dynamic>[contains('no build version')]);
+    });
+
+    test('keeps checking after a failed check', () {
+      final Map<String, dynamic> run = _launch(
+        responses: "{ reject: true }, { status: 200, body: 'const buildVersion = \"456\";' }",
+      );
+      expect(run['fetches'], 2);
+      expect(run['reloads'], 1);
+      expect(run['warnings'], <dynamic>[contains('could not check')]);
     });
 
     test('reads the version from a served index.html, not its own regex', () {

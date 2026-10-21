@@ -56,9 +56,10 @@ jobs:
           cd pages
           # develop owns the site root (the installable PWA preview, and the
           # 404.html deep-link fallback every deployment relies on). Clear the
-          # previous build but keep the per-PR previews beside it.
+          # previous build but keep the per-PR previews beside it, and a CNAME
+          # if a custom domain is ever configured.
           find . -mindepth 1 -maxdepth 1 \
-            ! -name .git ! -name .nojekyll ! -name 'pr-*' \
+            ! -name .git ! -name .nojekyll ! -name CNAME ! -name 'pr-*' \
             -exec rm -rf {} +
           cp -r ../build/web/. .
           touch .nojekyll

@@ -67,8 +67,17 @@ void main() {
 
   group('web/index.html', () {
     test('launches fullscreen from the iOS home screen', () {
-      expect(indexHtml, contains('name="apple-mobile-web-app-capable"'));
-      expect(indexHtml, contains('content="black-translucent"'));
+      expect(
+        indexHtml,
+        contains('<meta name="apple-mobile-web-app-capable" content="yes">'),
+      );
+      expect(
+        indexHtml,
+        contains(
+          '<meta name="apple-mobile-web-app-status-bar-style" '
+          'content="black-translucent">',
+        ),
+      );
       expect(indexHtml, contains('viewport-fit=cover'));
       expect(indexHtml, contains('href="icons/apple-touch-icon.png"'));
       expect(
@@ -134,9 +143,40 @@ void main() {
       expect(developWorkflow, contains('needs: verify'));
     });
 
-    test('keeps the pull request previews when replacing the root', () {
-      expect(developWorkflow, contains("! -name 'pr-*'"));
-      expect(developWorkflow, contains('! -name .nojekyll'));
+    test('clears the previous build but keeps previews and site files', () {
+      final String clear = RegExp(
+        r'find \. -mindepth 1 -maxdepth 1 \\\n[\s\S]*?-exec rm -rf \{\} \+',
+      ).firstMatch(developWorkflow)![0]!.replaceAll('\\\n', ' ');
+      final Directory pages = Directory.systemTemp.createTempSync('gh-pages');
+      addTearDown(() => pages.deleteSync(recursive: true));
+      for (final String dir in <String>['.git', 'pr-3', 'pr-12', 'assets']) {
+        Directory('${pages.path}/$dir').createSync();
+      }
+      for (final String file in <String>[
+        '.nojekyll',
+        'CNAME',
+        'index.html',
+        '404.html',
+        'main.dart.js',
+        'pr-3/index.html',
+      ]) {
+        File('${pages.path}/$file').writeAsStringSync('');
+      }
+
+      final ProcessResult result = Process.runSync('bash', <String>[
+        '-c',
+        clear,
+      ], workingDirectory: pages.path);
+
+      expect(result.exitCode, 0, reason: '${result.stderr}');
+      expect(
+        pages
+            .listSync()
+            .map((FileSystemEntity entry) => entry.path.split('/').last)
+            .toSet(),
+        <String>{'.git', '.nojekyll', 'CNAME', 'pr-3', 'pr-12'},
+      );
+      expect(File('${pages.path}/pr-3/index.html').existsSync(), isTrue);
     });
 
     test('does not finish until GitHub Pages serves the new build', () {

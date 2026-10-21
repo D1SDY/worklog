@@ -37,9 +37,10 @@ Close the app and open it again. On launch, and whenever it returns to the
 foreground, the app checks whether a newer build has been deployed and reloads
 once if so. No service worker is registered, so nothing can pin an old build.
 
-Deep links and refreshes on nested routes (`/worklog/training`) work: GitHub
-Pages answers unknown paths with `404.html`, which hands the route back to the
-app.
+Deep links and refreshes on nested routes (`/worklog/training`,
+`/worklog/pr-<N>/statistics`) work once `develop` has deployed: GitHub Pages
+answers unknown paths with the site-root `404.html`, which `develop`'s deploy
+publishes and which hands the route back to the right deployment.
 
 ## Known PWA limitations
 
@@ -68,5 +69,8 @@ flutter analyze
 flutter test
 flutter run -d chrome
 ```
+
+The tests under `test/web/` run the PWA's JavaScript, so `node` must be on
+`PATH` (it is preinstalled on GitHub's `ubuntu-latest` runners).
 
 App icons are rendered from `web/icons/icon.svg`.

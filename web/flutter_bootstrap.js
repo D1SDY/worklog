@@ -53,9 +53,21 @@ if (typeof window !== 'undefined') {
       checkInFlight = true;
       try {
         const response = await fetch(document.baseURI, { cache: 'no-cache' });
+        if (!response.ok) {
+          console.warn(
+            'Worklog: this deployment answered ' + response.status +
+              '; it may have been removed.',
+          );
+          return;
+        }
+        const deployedIndexHtml = await response.text();
+        if (!/buildVersion = "\d+"/.test(deployedIndexHtml)) {
+          console.warn('Worklog: the deployed index.html carries no build version.');
+          return;
+        }
         const target = worklogBuildToReloadFor(
           buildVersion,
-          await response.text(),
+          deployedIndexHtml,
           JSON.parse(sessionStorage.getItem(reloadKey) || 'null'),
           Date.now(),
         );
