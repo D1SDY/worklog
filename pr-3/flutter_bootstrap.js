@@ -38,55 +38,86 @@ addEventListener("message", eventListener);
 if (!window._flutter) {
   window._flutter = {};
 }
-_flutter.buildConfig = {"engineRevision":"a804b261645ef8c13eb3d5c44a5c2fb0340c5539","wasmHashes":{"skwasm.wasm":"e540fd5e8303b7b68ec2718cb49e9c421f8ade3075b15e02a7059a62654df9a1","skwasm_heavy.wasm":"565f5cc1cca6ab120f11934b105f01fec4b58b480c82e0889dca93af8e6f8635","wimp.wasm":"e924eaafd801d41e017d178f3fd5cf8a417f641fe35c9ed34a4e1d7582283e0c","webparagraph/canvaskit.wasm":"0ce1b05082efdc8529550e8a01f6ff0593972d55525035010e26f5600aa9f254","chromium/canvaskit.wasm":"ae8ff1d858140f7b1300ced3fa89fb8c9dce0a400a0f4f1e11f6dcfb3315fdcf","canvaskit.wasm":"fbed517a43e82452404446683f00f2e876d835aed84410695759e67b6bb01cd3"},"builds":[{"compileTarget":"dart2js","renderer":"canvaskit","mainJsPath":"main.dart.js"},{}]};
+_flutter.buildConfig = {"engineRevision":"a804b261645ef8c13eb3d5c44a5c2fb0340c5539","wasmHashes":{"wimp.wasm":"e924eaafd801d41e017d178f3fd5cf8a417f641fe35c9ed34a4e1d7582283e0c","chromium/canvaskit.wasm":"ae8ff1d858140f7b1300ced3fa89fb8c9dce0a400a0f4f1e11f6dcfb3315fdcf","webparagraph/canvaskit.wasm":"0ce1b05082efdc8529550e8a01f6ff0593972d55525035010e26f5600aa9f254","canvaskit.wasm":"fbed517a43e82452404446683f00f2e876d835aed84410695759e67b6bb01cd3","skwasm.wasm":"e540fd5e8303b7b68ec2718cb49e9c421f8ade3075b15e02a7059a62654df9a1","skwasm_heavy.wasm":"565f5cc1cca6ab120f11934b105f01fec4b58b480c82e0889dca93af8e6f8635"},"builds":[{"compileTarget":"dart2js","renderer":"canvaskit","mainJsPath":"main.dart.js"},{}]};
 
 
-(function () {
-  const buildVersion = "2810266306" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */;
-  window.worklogBuildVersion = buildVersion;
+// A home-screen PWA reopens from the browser's HTTP cache, which on GitHub
+// Pages may hold the previous index.html for up to 10 minutes. The app
+// revalidates index.html on launch and whenever it returns to the foreground,
+// and reloads when a newer build has been deployed. A reload that did not
+// deliver the new build (the CDN answered from its cache, the network
+// dropped) is retried once that cache window has passed.
+const WORKLOG_RELOAD_RETRY_MS = 10 * 60 * 1000;
 
-  for (const build of _flutter.buildConfig.builds) {
-    if (build.mainJsPath) {
-      build.mainJsPath += '?v=' + buildVersion;
-    }
+function worklogBuildToReloadFor(runningVersion, deployedIndexHtml, lastAttempt, now) {
+  const deployed = deployedIndexHtml.match(/buildVersion = "(\d+)"/);
+  if (!deployed || deployed[1] === runningVersion) {
+    return null;
   }
+  if (
+    lastAttempt &&
+    lastAttempt.version === deployed[1] &&
+    now - lastAttempt.at < WORKLOG_RELOAD_RETRY_MS
+  ) {
+    return null;
+  }
+  return deployed[1];
+}
 
-  _flutter.loader.load({
-    onEntrypointLoaded: async function (engineInitializer) {
-      const appRunner = await engineInitializer.initializeEngine({
-        hostElement: document.getElementById('app'),
-      });
-      await appRunner.runApp();
-    },
-  });
+if (typeof window !== 'undefined') {
+  (function () {
+    const buildVersion = "1551419464" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */;
+    const reloadKey = 'worklog.reloadAttempt';
+    let checkInFlight = false;
+    window.worklogBuildVersion = buildVersion;
 
-  // A home-screen PWA reopens from the browser's HTTP cache, which on GitHub
-  // Pages may hold the previous index.html for up to 10 minutes. Revalidate
-  // it on launch and whenever the app returns to the foreground, and reload
-  // once a newer build has been deployed.
-  async function reloadIfNewBuildDeployed() {
-    try {
-      const response = await fetch(document.baseURI, { cache: 'no-cache' });
-      const deployed = (await response.text())
-        .match(/buildVersion = "(\d+)"/);
-      if (!deployed || deployed[1] === buildVersion) {
+    for (const build of _flutter.buildConfig.builds) {
+      if (build.mainJsPath) {
+        build.mainJsPath += '?v=' + buildVersion;
+      }
+    }
+
+    _flutter.loader.load({
+      onEntrypointLoaded: async function (engineInitializer) {
+        const appRunner = await engineInitializer.initializeEngine({
+          hostElement: document.getElementById('app'),
+        });
+        await appRunner.runApp();
+      },
+    });
+
+    async function reloadIfNewBuildDeployed() {
+      if (checkInFlight) {
         return;
       }
-      const reloadKey = 'worklog.reloadedFor';
-      if (sessionStorage.getItem(reloadKey) === deployed[1]) {
-        return;
+      checkInFlight = true;
+      try {
+        const response = await fetch(document.baseURI, { cache: 'no-cache' });
+        const target = worklogBuildToReloadFor(
+          buildVersion,
+          await response.text(),
+          JSON.parse(sessionStorage.getItem(reloadKey) || 'null'),
+          Date.now(),
+        );
+        if (target !== null) {
+          sessionStorage.setItem(
+            reloadKey,
+            JSON.stringify({ version: target, at: Date.now() }),
+          );
+          window.location.reload();
+        }
+      } catch (error) {
+        console.warn('Worklog: could not check for a newer build.', error);
+      } finally {
+        checkInFlight = false;
       }
-      sessionStorage.setItem(reloadKey, deployed[1]);
-      window.location.reload();
-    } catch (error) {
-      console.warn('Worklog: could not check for a newer build.', error);
     }
-  }
 
-  reloadIfNewBuildDeployed();
-  document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') {
-      reloadIfNewBuildDeployed();
-    }
-  });
-})();
+    reloadIfNewBuildDeployed();
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') {
+        reloadIfNewBuildDeployed();
+      }
+    });
+  })();
+}
