@@ -1,0 +1,57 @@
+name: PR cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  drop-preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: pages
+      - env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          cd pages
+          if [ ! -d "pr-$PR" ]; then
+            echo "no preview for PR #$PR"
+            exit 0
+          fi
+          rm -rf "pr-$PR"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: drop preview for PR #$PR" || echo "nothing to commit"
+
+          # develop and other pr-cleanup runs can push to gh-pages around the
+          # same time as PR previews; each writes to its own directory, so a
+          # rebase on top of a concurrent push is conflict-free by
+          # construction. Retry with fetch+rebase instead of relying on
+          # concurrency grouping (which does not span workflows or PRs).
+          pushed=false
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              pushed=true
+              break
+            fi
+            echo "Push rejected (attempt $attempt/5) — fetching and rebasing onto origin/gh-pages"
+            git fetch origin gh-pages
+            if ! git rebase origin/gh-pages; then
+              git rebase --abort
+              echo "::error::rebase onto origin/gh-pages conflicted; aborting rather than resolving blindly" >&2
+              exit 1
+            fi
+            sleep $((attempt * 3))
+          done
+
+          if [ "$pushed" != "true" ]; then
+            echo "::error::gh-pages push could not be fast-forwarded after 5 attempts" >&2
+            exit 1
+          fi

@@ -1,0 +1,401 @@
+name: PR
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+
+env:
+  # gh needs the repo explicitly: some steps run outside a checkout
+  GH_REPO: ${{ github.repository }}
+  FLUTTER_VERSION: 3.47.2
+
+jobs:
+  verify:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Clear stale verdict labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for label in needs-fix ready-for-approval review-blocked review-cap-reached; do
+            gh pr edit "${{ github.event.pull_request.number }}" --remove-label "$label" || true
+          done
+      - run: dart format --set-exit-if-changed .
+      - run: flutter analyze --fatal-infos
+      - run: flutter test --coverage
+      - run: dart tool/ci/coverage_check.dart coverage/lcov.info .github/coverage-floor
+
+  build:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build web --release --base-href "/worklog/pr-${{ github.event.pull_request.number }}/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/web
+          retention-days: 7
+
+  preview:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.publish.outputs.url }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: pages
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: web-build
+      - id: publish
+        env:
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          rm -rf "pages/pr-$PR"
+          mkdir -p "pages/pr-$PR"
+          cp -r web-build/. "pages/pr-$PR/"
+          cd pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "deploy: preview for PR #$PR" || echo "nothing to commit"
+
+          # Multiple PRs can publish to gh-pages concurrently; each writes only
+          # to its own pr-<N>/ directory, so a rebase on top of a concurrent
+          # push is conflict-free by construction. Retry with fetch+rebase
+          # instead of relying on concurrency grouping (which is per-PR here).
+          pushed=false
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              pushed=true
+              break
+            fi
+            echo "Push rejected (attempt $attempt/5) — fetching and rebasing onto origin/gh-pages"
+            git fetch origin gh-pages
+            if ! git rebase origin/gh-pages; then
+              git rebase --abort
+              echo "::error::rebase onto origin/gh-pages conflicted; aborting rather than resolving blindly" >&2
+              exit 1
+            fi
+            sleep $((attempt * 3))
+          done
+
+          if [ "$pushed" != "true" ]; then
+            echo "::error::gh-pages push could not be fast-forwarded after 5 attempts" >&2
+            exit 1
+          fi
+
+          echo "url=https://d1sdy.github.io/worklog/pr-$PR/" >> "$GITHUB_OUTPUT"
+      - name: Comment the preview URL
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --body "Preview: ${{ steps.publish.outputs.url }}"
+
+  review-ba:
+    needs: preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - id: probe
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: dart tool/ci/notion_probe.dart ba database "${{ vars.NOTION_SPRINT_DB_ID }}" .review
+      - if: steps.probe.outputs.ok == 'true'
+        uses: anthropics/claude-code-action@v1
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: >-
+            Review pull request ${{ github.repository }}#${{ github.event.pull_request.number }}
+            using the business-analyst agent defined in .claude/agents/business-analyst.md.
+            Follow .claude/rules/review-protocol.md exactly.
+            Write your verdict to .review/ba.json and the human-readable
+            review to .review/ba.md. Do not post anything yourself — the
+            workflow publishes .review/ba.md as a PR comment after scanning it.
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 30
+            --mcp-config .github/mcp/ba.json
+            --allowedTools "Read,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Edit(.review/**),mcp__notion"
+      - name: Scan BA review for secrets
+        id: scan_ba
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f .review/ba.md ]; then
+            dart tool/ci/secret_scan.dart .review/ba.md
+          else
+            echo "no .review/ba.md produced — skipping scan and comment"
+          fi
+      - name: Post BA review
+        if: always() && steps.scan_ba.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -f .review/ba.md ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file .review/ba.md
+          fi
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-ba
+          path: |
+            .review/ba.json
+            .review/ba.md
+          if-no-files-found: warn
+
+  review-qa:
+    needs: preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: >-
+            Review pull request ${{ github.repository }}#${{ github.event.pull_request.number }}
+            using the qa-engineer agent defined in .claude/agents/qa-engineer.md.
+            The deployed preview is at ${{ needs.preview.outputs.url }} — drive it
+            with Playwright and read the browser console.
+            Follow .claude/rules/review-protocol.md exactly.
+            Write your verdict to .review/qa.json and the human-readable
+            review to .review/qa.md. Do not post anything yourself — the
+            workflow publishes .review/qa.md as a PR comment after scanning it.
+          claude_args: |
+            --model claude-opus-5
+            --max-turns 40
+            --mcp-config .github/mcp/qa.json
+            --allowedTools "Read,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(flutter test:*),Edit(.review/**),mcp__dart,mcp__playwright"
+      - name: Scan QA review for secrets
+        id: scan_qa
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f .review/qa.md ]; then
+            dart tool/ci/secret_scan.dart .review/qa.md
+          else
+            echo "no .review/qa.md produced — skipping scan and comment"
+          fi
+      - name: Post QA review
+        if: always() && steps.scan_qa.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -f .review/qa.md ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file .review/qa.md
+          fi
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-qa
+          path: |
+            .review/qa.json
+            .review/qa.md
+          if-no-files-found: warn
+
+  review-design:
+    needs: preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - id: probe
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        run: dart tool/ci/notion_probe.dart design page "${{ vars.NOTION_UI_RULES_PAGE_ID }}" .review
+      - if: steps.probe.outputs.ok == 'true'
+        uses: anthropics/claude-code-action@v1
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: >-
+            Review pull request ${{ github.repository }}#${{ github.event.pull_request.number }}
+            using the ui-designer agent defined in .claude/agents/ui-designer.md.
+            The deployed preview is at ${{ needs.preview.outputs.url }} — look at it
+            with Playwright at 360x800 and 430x932.
+            Follow .claude/rules/review-protocol.md exactly.
+            Write your verdict to .review/design.json and the human-readable
+            review to .review/design.md. Do not post anything yourself — the
+            workflow publishes .review/design.md as a PR comment after
+            scanning it.
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 35
+            --mcp-config .github/mcp/design.json
+            --allowedTools "Read,Grep,Glob,Bash(gh pr view:*),Bash(gh pr diff:*),Edit(.review/**),mcp__notion,mcp__playwright"
+      - name: Scan design review for secrets
+        id: scan_design
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f .review/design.md ]; then
+            dart tool/ci/secret_scan.dart .review/design.md
+          else
+            echo "no .review/design.md produced — skipping scan and comment"
+          fi
+      - name: Post design review
+        if: always() && steps.scan_design.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -f .review/design.md ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" --body-file .review/design.md
+          fi
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-design
+          path: |
+            .review/design.json
+            .review/design.md
+          if-no-files-found: warn
+
+  gate:
+    needs: [preview, review-ba, review-qa, review-design]
+    if: always() && needs.preview.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      run_autofix: ${{ steps.decide.outputs.run_autofix }}
+      approved: ${{ steps.decide.outputs.approved }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: review-*
+          merge-multiple: true
+          path: .review
+      - id: labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          current=$(gh pr view "${{ github.event.pull_request.number }}" \
+            --json labels --jq '[.labels[].name] | join(",")')
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+      - id: decide
+        run: dart tool/ci/review_gate.dart .review "${{ steps.labels.outputs.current }}" >> "$GITHUB_OUTPUT"
+      - name: Apply labels and report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          ADD: ${{ steps.decide.outputs.labels_to_add }}
+          REMOVE: ${{ steps.decide.outputs.labels_to_remove }}
+          SUMMARY: ${{ steps.decide.outputs.summary }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra removals <<< "$REMOVE"
+          for label in "${removals[@]}"; do
+            [ -n "$label" ] && gh pr edit "$PR" --remove-label "$label" || true
+          done
+          IFS=',' read -ra additions <<< "$ADD"
+          for label in "${additions[@]}"; do
+            [ -n "$label" ] && gh pr edit "$PR" --add-label "$label" || true
+          done
+          printf '### Review gate\n\n%s\n' "$SUMMARY" | gh pr comment "$PR" --body-file -
+      - name: Fail the check when the gate does not approve
+        if: steps.decide.outputs.approved != 'true'
+        run: |
+          echo "Gate did not approve; see the review comments."
+          exit 1
+
+  autofix:
+    needs: gate
+    if: always() && needs.gate.outputs.run_autofix == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: review-*
+          merge-multiple: true
+          path: .review
+      - uses: anthropics/claude-code-action@v1
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: >-
+            Using the flutter-senior-dev agent defined in
+            .claude/agents/flutter-senior-dev.md, fix every BLOCKER and MAJOR
+            finding with category "code" in the .review/*.json files.
+            Do not weaken or delete tests, and do not lower the coverage floor.
+            If a finding is wrong, leave the code alone and explain why in the
+            commit body. Then run dart format, flutter analyze --fatal-infos and
+            flutter test, and commit and push to
+            ${{ github.event.pull_request.head.ref }}.
+          claude_args: |
+            --model claude-opus-5
+            --max-turns 60
+            --mcp-config .github/mcp/dev.json
+            --allowedTools "Read,Edit,Grep,Glob,Bash(dart:*),Bash(flutter:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),mcp__dart,mcp__notion"

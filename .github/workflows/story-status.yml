@@ -1,0 +1,35 @@
+name: Story status
+
+# Moves a story's Notion status forward when its PR merges into develop.
+# Deterministic — no agent touches Notion here. Never moves a story backwards.
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [closed]
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.2
+
+jobs:
+  delivered:
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'story/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_SPRINT_DB_ID: ${{ vars.NOTION_SPRINT_DB_ID }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: dart tool/ci/notion_status.dart "$BRANCH" Delivered
