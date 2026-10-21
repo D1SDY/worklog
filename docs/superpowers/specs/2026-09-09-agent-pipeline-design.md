@@ -289,8 +289,12 @@ is computed.
   Android or iOS verification is made anywhere in this design.
 - No production environment. `main` is untouched by these workflows; promotion
   from `develop` to `main` is a later, separate concern.
-- Story status transitions in Notion remain owned by the `story-workflow`
-  skill, which stops at `In Test`. This pipeline does not write Notion status.
+- Story status up to `In Test` stays owned by the `story-workflow` skill. The
+  pipeline's only Notion write is `story-status.yml`: when a `story/<ID>-*` PR
+  merges into `develop`, `tool/ci/notion_status.dart` moves that story forward
+  to `Delivered`. It never moves a story backwards. No agent writes Notion
+  status. `Deployed` waits for the `develop` → `main` promotion, which is not
+  yet designed.
 
 ## 12. Assumptions to verify during implementation
 
