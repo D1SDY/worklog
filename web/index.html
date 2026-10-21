@@ -1,46 +1,69 @@
 <!DOCTYPE html>
-<html>
+<html lang="uk">
 <head>
   <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
+    Replaced by the value of `flutter build web --base-href`: /worklog/ for
+    develop, /worklog/pr-<N>/ for pull requests.
   -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Журнал тренувань: записуйте підходи, відстежуйте прогрес і особисті рекорди.">
+  <meta name="theme-color" content="#0F1419">
 
-  <!-- iOS meta tags & icons -->
+  <!-- iOS: launch fullscreen from the home screen, drawing under the status bar. -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="worklog">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Worklog">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>worklog</title>
+  <title>Workout Logger</title>
   <link rel="manifest" href="manifest.json">
+
+  <!--
+    Flutter web reports zero view padding, so SafeArea cannot keep content
+    clear of the notch and the home indicator. Inset the Flutter host element
+    by the safe-area insets instead, and paint the uncovered strips in the
+    colour of the surface they border: --bg-primary under the status bar,
+    --bg-secondary (the bottom navigation bar) under the home indicator.
+  -->
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: linear-gradient(to bottom, #0F1419 50%, #1A2332 50%);
+    }
+    #app {
+      position: fixed;
+      top: env(safe-area-inset-top, 0px);
+      right: env(safe-area-inset-right, 0px);
+      bottom: env(safe-area-inset-bottom, 0px);
+      left: env(safe-area-inset-left, 0px);
+      background: #0F1419;
+    }
+  </style>
+
+  <!-- Restores a deep link handed over by 404.html before the router reads the URL. -->
+  <script>
+    (function () {
+      var route = new URLSearchParams(window.location.search).get('p');
+      if (route !== null) {
+        var target = new URL(route.replace(/^\/+/, ''), document.baseURI);
+        window.history.replaceState(null, '', target.href + window.location.hash);
+      }
+    })();
+  </script>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
-  <script src="flutter_bootstrap.js" async></script>
+  <div id="app"></div>
+  <script>
+    {{flutter_bootstrap_js}}
+  </script>
 </body>
 </html>

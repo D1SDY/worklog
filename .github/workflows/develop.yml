@@ -45,21 +45,26 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build web --release --base-href "/worklog/dev/"
+      - run: flutter build web --release --base-href "/worklog/"
       - uses: actions/checkout@v6
         with:
           ref: gh-pages
           path: pages
       - run: |
           set -euo pipefail
-          rm -rf pages/dev
-          mkdir -p pages/dev
-          cp -r build/web/. pages/dev/
           cd pages
+          # develop owns the site root (the installable PWA preview, and the
+          # 404.html deep-link fallback every deployment relies on). Clear the
+          # previous build but keep the per-PR previews beside it.
+          find . -mindepth 1 -maxdepth 1 \
+            ! -name .git ! -name .nojekyll ! -name 'pr-*' \
+            -exec rm -rf {} +
+          cp -r ../build/web/. .
+          touch .nojekyll
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "deploy: dev environment at ${{ github.sha }}" || echo "nothing to commit"
+          git commit -m "deploy: develop at ${{ github.sha }}" || echo "nothing to commit"
 
           # develop and pr-cleanup can both push to gh-pages around the same
           # time as PR previews; each writes to its own directory, so a
