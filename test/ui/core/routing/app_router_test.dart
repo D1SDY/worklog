@@ -7,6 +7,7 @@ import 'package:worklog/ui/core/app.dart';
 import 'package:worklog/ui/core/routing/app_router.dart';
 import 'package:worklog/ui/core/widgets/not_found_screen.dart';
 import 'package:worklog/ui/home/widgets/home_screen.dart';
+import 'package:worklog/ui/shell/widgets/app_bottom_nav_bar.dart';
 import 'package:worklog/ui/shell/widgets/app_shell.dart';
 import 'package:worklog/ui/statistics/widgets/statistics_screen.dart';
 import 'package:worklog/ui/training/widgets/training_screen.dart';
@@ -19,7 +20,7 @@ String locationOf(GoRouter router) {
 /// Finds a tab label inside the bottom bar, excluding identical AppBar titles.
 Finder navLabel(String label) {
   return find.descendant(
-    of: find.byType(NavigationBar),
+    of: find.byType(AppBottomNavBar),
     matching: find.text(label),
   );
 }
@@ -62,7 +63,9 @@ void main() {
       expect(find.byType(AppShell), findsOneWidget);
       expect(find.byType(StatisticsScreen), findsOneWidget);
       expect(
-        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        tester
+            .widget<AppBottomNavBar>(find.byType(AppBottomNavBar))
+            .selectedIndex,
         ShellDestination.statistics.index,
       );
     });
@@ -78,7 +81,9 @@ void main() {
 
       expect(find.byType(TrainingScreen), findsOneWidget);
       expect(
-        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+        tester
+            .widget<AppBottomNavBar>(find.byType(AppBottomNavBar))
+            .selectedIndex,
         ShellDestination.training.index,
       );
     });

@@ -24,6 +24,17 @@ abstract final class AppTheme {
     return GoogleFonts.jetBrainsMono(textStyle: style);
   }
 
+  /// Bottom-nav label: Inter regular 12/16, per the Figma Tab Item. Material's
+  /// `labelMedium` is 12/16 too but medium weight, so this is defined here
+  /// rather than borrowed.
+  static TextStyle navLabel() {
+    return GoogleFonts.inter(
+      fontSize: AppTypeScale.navLabelSize,
+      height: AppTypeScale.navLabelLineHeight / AppTypeScale.navLabelSize,
+      fontWeight: FontWeight.w400,
+    );
+  }
+
   static ThemeData dark() {
     final TextTheme text = textTheme();
 
@@ -45,34 +56,6 @@ abstract final class AppTheme {
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         titleTextStyle: text.titleLarge,
-      ),
-      navigationBarTheme: NavigationBarThemeData(
-        height: AppSizes.bottomNavHeight,
-        backgroundColor: AppColors.bgSecondary,
-        elevation: 0,
-        // The rules page distinguishes tabs by colour only — no Material 3
-        // indicator pill.
-        indicatorColor: Colors.transparent,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        iconTheme: WidgetStateProperty.resolveWith<IconThemeData>((
-          Set<WidgetState> states,
-        ) {
-          return IconThemeData(
-            size: AppSizes.navIcon,
-            color: states.contains(WidgetState.selected)
-                ? AppColors.accentBlue
-                : AppColors.textMuted,
-          );
-        }),
-        labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((
-          Set<WidgetState> states,
-        ) {
-          return (text.labelMedium ?? const TextStyle()).copyWith(
-            color: states.contains(WidgetState.selected)
-                ? AppColors.accentBlue
-                : AppColors.textMuted,
-          );
-        }),
       ),
     );
   }

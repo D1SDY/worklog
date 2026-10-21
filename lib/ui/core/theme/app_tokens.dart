@@ -63,13 +63,37 @@ abstract final class AppRadius {
   static const double modal = 16;
 }
 
+/// Font sizes and line heights fixed by the design rather than taken from the
+/// Material type scale.
+abstract final class AppTypeScale {
+  /// Bottom-nav label size, per the Figma Tab Item: 12/16 Inter regular.
+  static const double navLabelSize = 12;
+
+  /// Bottom-nav label line height.
+  static const double navLabelLineHeight = 16;
+}
+
 /// Fixed component dimensions defined by the rules page.
 abstract final class AppSizes {
-  /// Bottom navigation bar height, per WORLOG-001 and the rules page.
-  static const double bottomNavHeight = 56;
+  /// Bottom navigation bar height, per the Figma Tab bar (402x68). This
+  /// supersedes the 56px in WORLOG-001's acceptance criteria and the rules
+  /// page. The bottom safe-area inset is added beneath it, not included.
+  static const double bottomNavHeight = 68;
 
   /// Bottom navigation icon size — the rules page specifies 24×24px.
   static const double navIcon = 24;
+
+  /// Largest system text scale the bottom-nav labels follow.
+  ///
+  /// The bar's height is fixed at [bottomNavHeight], so its labels cannot grow
+  /// without bound the way body text does. Derived from the bar geometry, not
+  /// a design token: the label line may take what is left after the icon, the
+  /// icon-label gap and an [AppSpacing.xs] margin above and below, so
+  /// (68 - 2 * 4 - 24 - 4) / 16 = 2.0. Above that the label stops growing while
+  /// the rest of the app keeps scaling.
+  static const double navLabelMaxTextScale =
+      (bottomNavHeight - 2 * AppSpacing.xs - navIcon - AppSpacing.xs) /
+      AppTypeScale.navLabelLineHeight;
 
   /// Minimum touch target for icon buttons.
   static const double minTouchTarget = 44;

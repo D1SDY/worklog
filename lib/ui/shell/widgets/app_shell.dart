@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../domain/models/shell_destination.dart';
+import 'app_bottom_nav_bar.dart';
 
 /// The persistent navigation shell: a bottom tab bar over five top-level tabs.
 ///
@@ -19,20 +19,9 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: navigationShell,
-      // Height, colours, icon size and label behaviour come from
-      // navigationBarTheme, so the bar's spec lives in one place — see
-      // AppTheme.dark and AppSizes.
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: AppBottomNavBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: _onDestinationSelected,
-        destinations: <Widget>[
-          for (final ShellDestination destination in ShellDestination.values)
-            NavigationDestination(
-              icon: Icon(destination.icon),
-              selectedIcon: Icon(destination.selectedIcon),
-              label: destination.label,
-            ),
-        ],
       ),
     );
   }

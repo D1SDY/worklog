@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../domain/models/shell_destination.dart';
+import '../icons/tab_icon.dart';
+import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
 
 /// Stand-in body for a shell tab whose real content ships in a later story.
@@ -24,11 +26,20 @@ class PlaceholderTabView extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         itemCount: itemCount,
         itemBuilder: (BuildContext context, int index) {
+          final TextStyle? body = Theme.of(context).textTheme.bodyMedium;
+
           return ListTile(
-            leading: Icon(destination.icon, color: AppColors.textMuted),
-            title: Text(
-              '${destination.label} $index',
-              style: Theme.of(context).textTheme.bodyMedium,
+            leading: TabIcon(
+              destination: destination,
+              color: AppColors.textMuted,
+            ),
+            title: Text(destination.label, style: body),
+            // Numbers are JetBrains Mono everywhere, placeholders included.
+            trailing: Text(
+              '$index',
+              style: AppTheme.numeric(
+                body?.copyWith(color: AppColors.textMuted),
+              ),
             ),
           );
         },
