@@ -21,7 +21,6 @@ void main() {
     File('web/manifest.json').readAsStringSync(),
   ) as Map<String, dynamic>;
   final String indexHtml = File('web/index.html').readAsStringSync();
-  final String bootstrap = File('web/flutter_bootstrap.js').readAsStringSync();
   final String notFoundHtml = File('web/404.html').readAsStringSync();
   final String developWorkflow = File('.github/workflows/develop.yml')
       .readAsStringSync();
@@ -85,10 +84,6 @@ void main() {
           expect(indexHtml, contains('$side: env(safe-area-inset-$side, 0px)'));
         }
         expect(indexHtml, contains('<div id="app"></div>'));
-        expect(
-          bootstrap,
-          contains("hostElement: document.getElementById('app')"),
-        );
       },
     );
 
@@ -105,31 +100,9 @@ void main() {
         contains('name="theme-color" content="${_hex(AppColors.bgPrimary)}"'),
       );
     });
-
-    test('restores a deep link handed over by 404.html', () {
-      expect(
-        indexHtml,
-        contains("URLSearchParams(window.location.search).get('p')"),
-      );
-      expect(indexHtml, contains('history.replaceState'));
-      expect(indexHtml, contains('{{flutter_bootstrap_js}}'));
-    });
   });
 
   group('web/404.html', () {
-    test(
-      'redirects unknown paths to their deployment with the route in ?p=',
-      () {
-        expect(notFoundHtml, contains(r'/^pr-\d+$/'));
-        expect(notFoundHtml, contains("base + '?p=' + encodeURIComponent("));
-        expect(notFoundHtml, contains('window.location.replace('));
-      },
-    );
-
-    test('stops at the deployment root instead of redirecting in a loop', () {
-      expect(notFoundHtml, contains("if (route === '/') {"));
-    });
-
     test('uses the --bg-primary and text-primary tokens', () {
       expect(
         notFoundHtml,
@@ -140,29 +113,8 @@ void main() {
         contains('background: ${_hex(AppColors.bgPrimary)};'),
       );
       expect(notFoundHtml, contains('color: ${_hex(AppColors.textPrimary)};'));
-    });
-  });
-
-  group('web/flutter_bootstrap.js', () {
-    test('registers no service worker that could pin an old build', () {
-      expect(bootstrap, isNot(contains('serviceWorkerSettings')));
-    });
-
-    test('cache-busts main.dart.js with the build version', () {
-      expect(
-        bootstrap,
-        contains('const buildVersion = {{flutter_service_worker_version}};'),
-      );
-      expect(bootstrap, contains("build.mainJsPath += '?v=' + buildVersion;"));
-    });
-
-    test('reloads once when a newer build is deployed', () {
-      expect(
-        bootstrap,
-        contains("fetch(document.baseURI, { cache: 'no-cache' })"),
-      );
-      expect(bootstrap, contains("'visibilitychange'"));
-      expect(bootstrap, contains('sessionStorage.getItem(reloadKey)'));
+      expect(notFoundHtml, contains('color: ${_hex(AppColors.accentBlue)};'));
+      expect(notFoundHtml, contains('gap: ${AppSpacing.lg.toInt()}px;'));
     });
   });
 

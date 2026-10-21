@@ -49,15 +49,37 @@
     }
   </style>
 
-  <!-- Restores a deep link handed over by 404.html before the router reads the URL. -->
+  <!--
+    Restores a deep link handed over by 404.html before the router reads the
+    URL. Only a route inside this deployment is restored; anything that would
+    resolve elsewhere (another origin, ../ out of the base href) falls back to
+    the deployment root rather than throwing from replaceState.
+  -->
   <script>
-    (function () {
-      var route = new URLSearchParams(window.location.search).get('p');
-      if (route !== null) {
-        var target = new URL(route.replace(/^\/+/, ''), document.baseURI);
-        window.history.replaceState(null, '', target.href + window.location.hash);
+    function worklogRestoredUrl(search, hash, baseURI) {
+      var route = new URLSearchParams(search).get('p');
+      if (route === null) {
+        return null;
       }
-    })();
+      var target;
+      try {
+        target = new URL(route.replace(/^[\/\\]+/, ''), baseURI).href;
+      } catch (error) {
+        return baseURI;
+      }
+      return target.indexOf(baseURI) === 0 ? target + hash : baseURI;
+    }
+
+    if (typeof window !== 'undefined') {
+      var worklogRestored = worklogRestoredUrl(
+        window.location.search,
+        window.location.hash,
+        document.baseURI
+      );
+      if (worklogRestored !== null) {
+        window.history.replaceState(null, '', worklogRestored);
+      }
+    }
   </script>
 </head>
 <body>
