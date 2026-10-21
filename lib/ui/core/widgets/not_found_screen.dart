@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../domain/models/shell_destination.dart';
+import '../icons/lucide_svg.dart';
 import '../theme/app_tokens.dart';
 
 /// Shown when a route cannot be resolved — a stale deep link, or a typed URL on
@@ -24,8 +25,8 @@ class NotFoundScreen extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              const Icon(
-                Icons.search_off_outlined,
+              const LucideSvgIcon(
+                svg: LucideSvg.searchX,
                 size: AppSizes.emptyStateIcon,
                 color: AppColors.textMuted,
               ),

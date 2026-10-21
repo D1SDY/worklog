@@ -60,59 +60,18 @@ void main() {
       expect(family, contains('Inter'));
     });
 
-    test('uses JetBrains Mono for numeric values', () {
-      expect(AppTheme.numeric().fontFamily, contains('JetBrainsMono'));
+    test('nav label is Inter regular 12/16', () {
+      final TextStyle style = AppTheme.navLabel();
+
+      expect(style.fontFamily, contains('Inter'));
+      expect(style.fontSize, AppTypeScale.navLabelSize);
+      expect(style.fontSize, 12);
+      expect(style.fontSize! * style.height!, closeTo(16, 0.001));
+      expect(style.fontWeight, FontWeight.w400);
     });
 
-    group('bottom navigation bar', () {
-      test('is 56px on the secondary surface', () {
-        final NavigationBarThemeData nav = AppTheme.dark().navigationBarTheme;
-
-        expect(nav.height, AppSizes.bottomNavHeight);
-        expect(nav.height, 56);
-        expect(nav.backgroundColor, AppColors.bgSecondary);
-      });
-
-      test('icons are the 24px size the rules page specifies', () {
-        final NavigationBarThemeData nav = AppTheme.dark().navigationBarTheme;
-
-        expect(nav.iconTheme?.resolve(<WidgetState>{})?.size, 24);
-        expect(
-          nav.iconTheme?.resolve(<WidgetState>{WidgetState.selected})?.size,
-          AppSizes.navIcon,
-        );
-      });
-
-      test('shows no Material indicator pill', () {
-        expect(
-          AppTheme.dark().navigationBarTheme.indicatorColor,
-          Colors.transparent,
-        );
-      });
-
-      test('active tab is accent blue, inactive is muted', () {
-        final NavigationBarThemeData nav = AppTheme.dark().navigationBarTheme;
-        const Set<WidgetState> selected = <WidgetState>{WidgetState.selected};
-        const Set<WidgetState> unselected = <WidgetState>{};
-
-        expect(nav.iconTheme?.resolve(selected)?.color, AppColors.accentBlue);
-        expect(nav.iconTheme?.resolve(unselected)?.color, AppColors.textMuted);
-        expect(
-          nav.labelTextStyle?.resolve(selected)?.color,
-          AppColors.accentBlue,
-        );
-        expect(
-          nav.labelTextStyle?.resolve(unselected)?.color,
-          AppColors.textMuted,
-        );
-      });
-
-      test('labels are always visible', () {
-        expect(
-          AppTheme.dark().navigationBarTheme.labelBehavior,
-          NavigationDestinationLabelBehavior.alwaysShow,
-        );
-      });
+    test('uses JetBrains Mono for numeric values', () {
+      expect(AppTheme.numeric().fontFamily, contains('JetBrainsMono'));
     });
   });
 }

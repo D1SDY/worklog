@@ -141,7 +141,7 @@ restating token values or inventing a one-off style.* So:
   numeric value (weights, reps, stats, axis labels, prices).
 - **Spacing comes from the 4px scale** (4/8/12/16/20/24) — no arbitrary values.
   Radius: 8 inputs, 12 cards/chips/buttons, 16 modals/primary CTA, 50% avatars.
-- **Bottom nav:** 56px, icon above label, active tab in `--accent-blue`,
+- **Bottom nav:** 68px (Figma), icon above label (4px gap, Inter 12/16), Lucide SVG icons at 1.75 stroke, active tab in `--accent-blue`,
   inactive muted (~60% opacity), scroll position preserved per tab.
 
 ## Status tracking (standing instruction)
@@ -233,3 +233,72 @@ criteria, other properties, or other pages — ask for those.
   hot reload with it, though the dev server survives and keeps serving stale
   assets on the port — which makes it *look* like the app is still running.
   Launch it with `persistent: true`.
+
+### 2026-10-21 — WORLOG-001 (re-verification pass)
+
+- **Material 3 `NavigationBar` does not fit the 56px spec.** It is laid out
+  for 80px with a 32px indicator slot, and `NavigationDestination.label` is a
+  `String` with no `maxLines`. At 56px a wrapped label pushed the icon 6px
+  above the bar and the label past the screen bottom. Its themed
+  `labelTextStyle` also rendered at 14px body size, because
+  `ThemeData.dark().textTheme` carries colour only and has no geometry, so build
+  label styles from `Theme.of(context).textTheme` instead. Replaced it with
+  `AppBottomNavBar` (`lib/ui/shell/widgets/`). Every earlier test passed with
+  the broken bar, because none checked that the content stayed inside the bar
+  rect. Assert containment, not just the bar's height.
+- **Widget tests use a square-glyph test font**, so text is far wider than with
+  real Inter. That is a useful worst case for wrapping and overflow. Do not
+  "fix" it by loosening layout.
+- **The story page now names Figma as the source of truth** (Tab bar `5-163`,
+  Tab Item `4-81`). The Figma MCP hit its Starter-plan rate limit on the first
+  call, so plan for Figma being unreachable and say so in the report.
+- **`flutter_web_plugins` must be a declared SDK dependency** for
+  `usePathUrlStrategy()`. Otherwise `depend_on_referenced_packages` fires an
+  info and gate 1 fails.
+- **Reads outside the repo are blocked**, including the Flutter SDK at
+  `C:\src\flutter`. To learn how a framework widget lays out, probe it in a
+  throwaway test that prints `tester.getRect(...)`, and delete the probe.
+- **`flutter run -d chrome --print-dtd`** prints the DTD URI ("The Dart Tooling
+  Daemon is available at: ws://...") in about 35s. Connect `dtd` to that URI.
+- **When a story names an icon library, use that library.** The first shell
+  shipped Material "equivalents" under the rules page's "swappable" clause,
+  and the user rejected them. Material look-alikes are not compliant.
+- **For an exact stroke-width spec, render SVGs; do not use an icon font.**
+  Figma asks for 1.75px. The Lucide icon font (`lucide_icons_flutter`) is 2px,
+  or static 1.5/2/2.5/3px weights with no variable axis, and font glyphs are
+  pre-outlined, so they render visibly heavier than stroked vectors. The user
+  rejected two font-based builds as "bold". The shell now uses `flutter_svg`
+  with upstream Lucide path data as const strings at `stroke-width="1.75"`
+  (`lib/ui/core/icons/lucide_svg.dart`), tinted with `ColorFilter.mode(color,
+  BlendMode.srcIn)`. The font package was removed. For upstream path data,
+  `lucide_icons_flutter`'s doc comments embed each original stroked SVG as
+  base64. Its `assets/lucide.symbol.svg` is no good: it holds stroke-to-path
+  outlines, not strokes.
+- **Mark decorative SVG icons `excludeFromSemantics: true`.** Otherwise
+  `SvgPicture` adds an `isImage` node that merges into the tab button's
+  semantics.
+- **The Figma spec outranks the story's icon table and its AC numbers.** The
+  table said `trophy` and `circle-user`, but Figma's Tab Item uses `target` and
+  `user`. The AC said 56px, but Figma's bar is 68px, and its label is Inter
+  regular 12/16, not Material's `labelMedium` (12/16 medium). When Figma is
+  reachable, read these from it. When it isn't, ask before trusting the story.
+  Final glyphs: `house`, `dumbbell`, `chart-no-axes-column` (formerly
+  `bar-chart-2`; not `chart-column`, which has axes), `target`, `user`. Pin the
+  path data in tests.
+- **The active tab is the same outline glyph, only tinted.** There is no filled
+  or heavier variant; a "bold active" weight was rejected. One SVG and one
+  stroke in both states.
+- **Lucide glyph shapes can contradict a verbal description.** `target` is
+  three concentric circles, not two, and `dumbbell` is diagonal, not
+  horizontal. Check the actual SVG and report any mismatch rather than
+  rotating or redrawing.
+- **Figma colours did not match the rules-page tokens** (`#2F6BFF` vs
+  `--accent-blue #2563EB`, `#8A93A3` vs muted, `#0B0F17` vs `--bg-secondary`).
+  Report such mismatches; do not add hex outside `app_tokens.dart` or quietly
+  re-point a token.
+- **Web hot restart via the MCP is flaky in this toolchain.** It fails with a
+  dwds `_getSrcModuleLibraries` JSON-decode error, on the baseline as well
+  (A/B checked, so it is not app code), and an aborted restart can leave a
+  "Trying to render a disposed EngineFlutterView" assertion in
+  `get_runtime_errors`. What works: boot, `hot_reload`, then `hot_restart`. A
+  restart sent before any reload failed every time.
