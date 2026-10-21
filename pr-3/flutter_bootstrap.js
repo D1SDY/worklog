@@ -42,7 +42,7 @@ _flutter.buildConfig = {"engineRevision":"a804b261645ef8c13eb3d5c44a5c2fb0340c55
 
 
 (function () {
-  const buildVersion = "3555628846" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */;
+  const buildVersion = "2810266306" /* Flutter's service worker is deprecated and will be removed in a future Flutter release. */;
   window.worklogBuildVersion = buildVersion;
 
   for (const build of _flutter.buildConfig.builds) {
