@@ -46,6 +46,7 @@ Map<String, dynamic> _launch({
   String deployedVersion = '123',
   String lastAttempt = 'null',
   int visibilityEvents = 0,
+  int hiddenEvents = 0,
   String responses = '',
 }) {
   final String program =
@@ -88,6 +89,13 @@ for (let i = 0; i < $visibilityEvents; i++) {
   state.listeners.forEach((listener) => listener());
 }
 setTimeout(() => {
+  document.visibilityState = 'hidden';
+  for (let i = 0; i < $hiddenEvents; i++) {
+    state.listeners.forEach((listener) => listener());
+  }
+  document.visibilityState = 'visible';
+}, 60);
+setTimeout(() => {
   if (responses.length > 0) {
     state.listeners.forEach((listener) => listener());
   }
@@ -120,11 +128,11 @@ void main() {
 
   group('web/404.html redirect', () {
     const Map<String, String?> cases = <String, String?>{
-      '/worklog/statistics': '/worklog/?p=%2Fstatistics',
-      '/worklog/pr-3/statistics': '/worklog/pr-3/?p=%2Fstatistics',
+      '/worklog/statistics': '/worklog/?__route=%2Fstatistics',
+      '/worklog/pr-3/statistics': '/worklog/pr-3/?__route=%2Fstatistics',
       '/worklog/training/exercise/42':
-          '/worklog/?p=%2Ftraining%2Fexercise%2F42',
-      '/worklog/pr-abc/training': '/worklog/?p=%2Fpr-abc%2Ftraining',
+          '/worklog/?__route=%2Ftraining%2Fexercise%2F42',
+      '/worklog/pr-abc/training': '/worklog/?__route=%2Fpr-abc%2Ftraining',
       '/worklog/': null,
       '/worklog/pr-3/': null,
       '/worklog/pr-3': null,
@@ -148,7 +156,7 @@ void main() {
           notFoundScripts,
           "worklogRedirectTarget('/worklog/pr-3/training', '?day=3&q=a+b', '#set-2')",
         ),
-        '/worklog/pr-3/?p=%2Ftraining%3Fday%3D3%26q%3Da%2Bb#set-2',
+        '/worklog/pr-3/?__route=%2Ftraining%3Fday%3D3%26q%3Da%2Bb#set-2',
       );
     });
 
@@ -174,18 +182,23 @@ void main() {
       expect(restore(''), isNull);
     });
 
+    test("leaves the app's own query parameters alone", () {
+      expect(restore('?p=7&q=squat'), isNull);
+    });
+
     test('restores the route, its query and its fragment', () {
       expect(
-        restore('?p=%2Ftraining%3Fday%3D3', '#set-2'),
+        restore('?__route=%2Ftraining%3Fday%3D3', '#set-2'),
         '${base}training?day=3#set-2',
       );
     });
 
     const Map<String, String> hostile = <String, String>{
-      'another origin': '?p=https%3A%2F%2Fexample.com%2Fpwned',
-      'a backslash-relative origin': '?p=%5C%5Cexample.com%2Fx',
-      'a dot-dot escape from the base href': '?p=%2F..%2F..%2Fpr-4%2Ftraining',
-      'a javascript: URL': '?p=javascript%3Aalert(1)',
+      'another origin': '?__route=https%3A%2F%2Fexample.com%2Fpwned',
+      'a backslash-relative origin': '?__route=%5C%5Cexample.com%2Fx',
+      'a dot-dot escape from the base href':
+          '?__route=%2F..%2F..%2Fpr-4%2Ftraining',
+      'a javascript: URL': '?__route=javascript%3Aalert(1)',
     };
 
     for (final MapEntry<String, String> entry in hostile.entries) {
@@ -275,6 +288,11 @@ process.stdout.write(JSON.stringify(
         lastAttempt: "{ version: '456', at: Date.now() }",
       );
       expect(run['reloads'], 1);
+    });
+
+    test('does not check when the app goes to the background', () {
+      final Map<String, dynamic> run = _launch(hiddenEvents: 3);
+      expect(run['fetches'], 1);
     });
 
     test('coalesces foreground events while a check is in flight', () {

@@ -57,7 +57,7 @@
   -->
   <script>
     function worklogRestoredUrl(search, hash, baseURI) {
-      var route = new URLSearchParams(search).get('p');
+      var route = new URLSearchParams(search).get('__route');
       if (route === null) {
         return null;
       }

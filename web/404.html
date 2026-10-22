@@ -9,7 +9,7 @@
     GitHub Pages answers every unknown path with this page. Flutter routes
     (/worklog/training, /worklog/pr-12/statistics) are not files, so a refresh
     or an opened deep link lands here. Hand the route to the right
-    deployment's index.html as ?p=…; index.html restores it before Flutter
+    deployment's index.html as ?__route=…; index.html restores it before Flutter
     starts. A path that is already a deployment root has nowhere to go, so it
     stays here instead of redirecting in a loop.
   -->
@@ -26,7 +26,7 @@
       if (route === '/') {
         return null;
       }
-      return base + '?p=' + encodeURIComponent(route + search) + hash;
+      return base + '?__route=' + encodeURIComponent(route + search) + hash;
     }
 
     if (typeof window !== 'undefined') {
