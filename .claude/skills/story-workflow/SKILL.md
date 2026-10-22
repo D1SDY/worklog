@@ -233,3 +233,28 @@ criteria, other properties, or other pages — ask for those.
   hot reload with it, though the dev server survives and keeps serving stale
   assets on the port — which makes it *look* like the app is still running.
   Launch it with `persistent: true`.
+
+### 2026-10-21 — WORLOG-058 (PWA preview deploy)
+
+- **Flutter web has no safe-area support.** `viewPadding` is always zero on
+  web, so `SafeArea` does nothing in an iOS home-screen app. The insets are
+  applied in `web/index.html` by embedding Flutter in `#app` (custom
+  `hostElement`) positioned with `env(safe-area-inset-*)`. Do not add
+  `SafeArea` for the PWA's sake — it is a no-op there.
+- **`{{flutter_service_worker_version}}` expands to a quoted string plus a
+  deprecation comment** (`"123" /* … */`), not a bare number. Use it as a JS
+  expression, never inside quotes.
+- **Flutter 3.47's `flutter_service_worker.js` only unregisters itself.** The
+  custom `web/flutter_bootstrap.js` registers none; stale builds are handled
+  by a `?v=` on `main.dart.js` and a revalidate-and-reload check.
+- **Path URLs on GitHub Pages need `web/404.html`.** It forwards unknown paths
+  to the right deployment (`/worklog/` or `/worklog/pr-<N>/`) as `?p=`, which
+  `index.html` restores before the router starts. Only the site-root
+  `404.html` is ever served, so develop's deploy owns it.
+- **Headless Chromium here needs `locale` set** in the Playwright context, or
+  the engine dies with `RangeError: Incorrect locale information provided`.
+  `www.gstatic.com` is blocked by the sandbox proxy — route
+  `flutter-canvaskit/**` to the build's own `canvaskit/` directory.
+- **Branch prefix mismatch:** `.claude/rules/git.md` says `claude/…`, but
+  `story-status.yml` only moves stories to `Delivered` for `story/…` branches.
+  Unresolved.

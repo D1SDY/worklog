@@ -12,6 +12,7 @@ permissions:
   contents: write
   pull-requests: write
   id-token: write
+  pages: write
 
 env:
   # gh needs the repo explicitly: some steps run outside a checkout
@@ -45,21 +46,27 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build web --release --base-href "/worklog/dev/"
+      - run: flutter build web --release --base-href "/worklog/"
       - uses: actions/checkout@v6
         with:
           ref: gh-pages
           path: pages
       - run: |
           set -euo pipefail
-          rm -rf pages/dev
-          mkdir -p pages/dev
-          cp -r build/web/. pages/dev/
           cd pages
+          # develop owns the site root (the installable PWA preview, and the
+          # 404.html deep-link fallback every deployment relies on). Clear the
+          # previous build but keep the per-PR previews beside it, and a CNAME
+          # if a custom domain is ever configured.
+          find . -mindepth 1 -maxdepth 1 \
+            ! -name .git ! -name .nojekyll ! -name CNAME ! -name 'pr-*' \
+            -exec rm -rf {} +
+          cp -r ../build/web/. .
+          touch .nojekyll
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "deploy: dev environment at ${{ github.sha }}" || echo "nothing to commit"
+          git commit -m "deploy: develop at ${{ github.sha }}" || echo "nothing to commit"
 
           # develop and pr-cleanup can both push to gh-pages around the same
           # time as PR previews; each writes to its own directory, so a
@@ -86,6 +93,28 @@ jobs:
             echo "::error::gh-pages push could not be fast-forwarded after 5 attempts" >&2
             exit 1
           fi
+      - name: Wait for GitHub Pages to serve this build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          URL: https://d1sdy.github.io/worklog/
+        run: |
+          set -euo pipefail
+          # GitHub does not always start a Pages build for a push made with
+          # GITHUB_TOKEN, which leaves the site serving the previous build or
+          # a 404. Request one explicitly, then wait until the URL serves the
+          # build just pushed; the query string bypasses the CDN cache.
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" --silent
+          expected=$(grep -o 'buildVersion = "[0-9]*"' build/web/index.html)
+          for attempt in $(seq 1 30); do
+            served=$(curl -fsS "$URL?ci=${{ github.run_id }}-$attempt" 2>/dev/null || true)
+            if grep -qF "$expected" <<< "$served"; then
+              echo "GitHub Pages serves this build at $URL"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$URL did not serve this build within 5 minutes" >&2
+          exit 1
 
   retro:
     needs: deploy

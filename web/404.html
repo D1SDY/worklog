@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0F1419">
+  <title>Workout Logger</title>
+  <!--
+    GitHub Pages answers every unknown path with this page. Flutter routes
+    (/worklog/training, /worklog/pr-12/statistics) are not files, so a refresh
+    or an opened deep link lands here. Hand the route to the right
+    deployment's index.html as ?__route=…; index.html restores it before Flutter
+    starts. A path that is already a deployment root has nowhere to go, so it
+    stays here instead of redirecting in a loop.
+  -->
+  <script>
+    function worklogSiteRoot(pathname) {
+      return pathname.split('/').slice(0, 2).join('/') + '/';
+    }
+
+    function worklogRedirectTarget(pathname, search, hash) {
+      var segments = pathname.split('/');
+      var depth = /^pr-\d+$/.test(segments[2] || '') ? 3 : 2;
+      var base = segments.slice(0, depth).join('/') + '/';
+      var route = '/' + segments.slice(depth).join('/');
+      if (route === '/') {
+        return null;
+      }
+      return base + '?__route=' + encodeURIComponent(route + search) + hash;
+    }
+
+    if (typeof window !== 'undefined') {
+      var worklogTarget = worklogRedirectTarget(
+        window.location.pathname,
+        window.location.search,
+        window.location.hash
+      );
+      if (worklogTarget !== null) {
+        window.location.replace(worklogTarget);
+      }
+    }
+  </script>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #0F1419;
+      color: #F5F7FA;
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+    p {
+      margin: 0;
+    }
+    a {
+      color: #2563EB;
+    }
+  </style>
+</head>
+<body>
+  <p>Сторінку не знайдено</p>
+  <a id="home" href="/worklog/">На головну</a>
+  <script>
+    if (typeof window !== 'undefined') {
+      document.getElementById('home').href =
+        worklogSiteRoot(window.location.pathname);
+    }
+  </script>
+</body>
+</html>

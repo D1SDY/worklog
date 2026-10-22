@@ -1,17 +1,76 @@
-# worklog
+# Workout Logger (worklog)
 
-A new Flutter project.
+Flutter app for logging workouts. Targets Android and iOS; until native builds
+are set up, every change is tested on real phones as an installable web app
+(PWA).
 
-## Getting Started
+## Preview
 
-This project is a starting point for a Flutter application.
+| Build | URL | Updated |
+|---|---|---|
+| `develop` | https://d1sdy.github.io/worklog/ | every push to `develop`, after `flutter analyze` and `flutter test` pass |
+| Pull request | `https://d1sdy.github.io/worklog/pr-<N>/` | every push to the PR; removed when it closes |
 
-A few resources to get you started if this is your first Flutter project:
+The deploy is `.github/workflows/develop.yml`: it formats, analyzes and tests
+first, and a failing check blocks the deploy. The build is published to the
+root of the `gh-pages` branch, next to the `pr-<N>/` previews.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### Install on iPhone
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. Open https://d1sdy.github.io/worklog/ in **Safari** (other iOS browsers
+   cannot install web apps).
+2. Tap **Share** → **Add to Home Screen** → **Add**.
+3. Launch **Worklog** from the home screen. It opens fullscreen, without the
+   Safari toolbar; content stays clear of the notch and the home indicator.
+
+### Install on Android
+
+1. Open https://d1sdy.github.io/worklog/ in **Chrome**.
+2. Accept the **Install app** prompt, or use **⋮** → **Install app** /
+   **Add to Home screen**.
+3. Launch **Worklog** from the home screen or app drawer; it runs standalone,
+   without the browser UI.
+
+### Getting a new build onto the phone
+
+Close the app and open it again. On launch, and whenever it returns to the
+foreground, the app checks whether a newer build has been deployed and reloads
+once if so. No service worker is registered, so nothing can pin an old build.
+
+Deep links and refreshes on nested routes (`/worklog/training`,
+`/worklog/pr-<N>/statistics`) work once `develop` has deployed: GitHub Pages
+answers unknown paths with the site-root `404.html`, which `develop`'s deploy
+publishes and which hands the route back to the right deployment.
+
+## Known PWA limitations
+
+The preview is a testing vehicle, not a substitute for the native apps:
+
+- **No background rest-timer notifications or vibration on iOS.** Safari does
+  not let a web app run timers, vibrate or notify reliably while it is in the
+  background or the screen is locked. Rest-timer behaviour must be verified on
+  a native build.
+- **Performance is not representative for NFR-1.1.** Flutter web runs on
+  CanvasKit/WebAssembly in the browser; startup time and frame timings differ
+  from a release build on Android/iOS. Measure NFR-1.1 on native builds only.
+- **Offline storage must be web-compatible.** `sqflite` does not run on the
+  web; local persistence has to use a package with a web backend (e.g. `drift`
+  or `hive`) for the preview to keep working.
+- Fonts and the CanvasKit renderer are fetched from Google's CDNs on first
+  launch, so the first open needs a network connection.
+
+## Development
+
+See `CLAUDE.md` for the toolchain, commands, and the Definition of Done.
+
+```bash
+flutter pub get
+flutter analyze
+flutter test
+flutter run -d chrome
+```
+
+The tests under `test/web/` run the PWA's JavaScript, so `node` must be on
+`PATH` (it is preinstalled on GitHub's `ubuntu-latest` runners).
+
+App icons are rendered from `web/icons/icon.svg`.
